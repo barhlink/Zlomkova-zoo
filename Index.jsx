@@ -883,36 +883,91 @@ function SchodisteEnv({ question, onAnswer, c }) {
   );
 }
 
-// ─── Environments registry ────────────────────────────────────────────────────
+// ─── Question pool generators – každé prostředí generuje 100+ unikátních otázek ─
 const DENOMS=[2,3,4,5,6,8,10];
-const rD=()=>DENOMS[Math.floor(Math.random()*DENOMS.length)];
 const rN=d=>Math.floor(Math.random()*(d-1))+1;
 
+// Shuffle array in place (Fisher-Yates)
+const shuffle = arr => { for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];} return arr; };
+
+function poolSimple() {
+  const pool = [];
+  for(const d of DENOMS) for(let n=1;n<d;n++) pool.push({numerator:n,denominator:d});
+  // pad to 100+ by duplicating with shuffle
+  while(pool.length < 100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
+  return shuffle(pool);
+}
+
+function poolCompare() {
+  const pool = [];
+  for(const d1 of DENOMS) for(let n1=1;n1<d1;n1++)
+    for(const d2 of DENOMS) for(let n2=1;n2<d2;n2++)
+      if(!(n1===n2&&d1===d2)) pool.push({fractionA:[n1,d1],fractionB:[n2,d2]});
+  return shuffle(pool).slice(0,150);
+}
+
+function poolGrid() {
+  const cfgs=[[2,2],[2,3],[2,4],[3,3],[2,5],[3,4],[4,4],[2,6],[3,5]];
+  const pool=[];
+  for(const [rows,cols] of cfgs){ const t=rows*cols; for(let n=1;n<t;n++) pool.push({rows,cols,numerator:n,denominator:t}); }
+  while(pool.length<100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
+  return shuffle(pool);
+}
+
+function poolApartmany() {
+  const cfgs=[[2,2],[2,3],[3,2],[2,4],[4,2],[3,3],[2,5],[5,2]];
+  const pool=[];
+  for(const [floors,flatsPerFloor] of cfgs){ const t=floors*flatsPerFloor; for(let n=1;n<t;n++) pool.push({floors,flatsPerFloor,numerator:n,denominator:t}); }
+  while(pool.length<100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
+  return shuffle(pool);
+}
+
+function poolHodiny() {
+  const ds=[2,3,4,6,12];
+  const pool=[];
+  for(const d of ds) for(let n=1;n<d;n++) pool.push({numerator:n,denominator:d});
+  while(pool.length<100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
+  return shuffle(pool);
+}
+
+function poolSkupinka() {
+  const ds=[3,4,5,6,8,10];
+  const pool=[];
+  for(const d of ds) for(let n=1;n<d;n++)
+    for(const icon of SKUPINKA_ICONS) pool.push({numerator:n,denominator:d,icon});
+  return shuffle(pool).slice(0,150);
+}
+
+function poolRecept() {
+  const ds=[2,3,4,5,6];
+  const pool=[];
+  for(const d of ds) for(let n=1;n<d;n++)
+    for(const ing of RECIPE_ITEMS) pool.push({numerator:n,denominator:d,ingredient:ing});
+  while(pool.length<100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
+  return shuffle(pool);
+}
+
+function poolSchodiste() {
+  const ds=[4,5,6,7,8,10];
+  const pool=[];
+  for(const d of ds) for(let n=1;n<d;n++) pool.push({numerator:n,denominator:d});
+  while(pool.length<100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
+  return shuffle(pool);
+}
+
 const ENVS=[
-  { name:"🍕 Koláč",         desc:"Rozkrájej koláč a sněz správný kousek!",   comp:PizzaEnv,
-    gen:()=>{ const d=rD(); return {numerator:rN(d),denominator:d}; } },
-  { name:"📏 Číselná osa",   desc:"Přesuň kolečko na správné místo na ose.",   comp:NumberLineEnv,
-    gen:()=>{ const d=rD(); return {numerator:rN(d),denominator:d}; } },
-  { name:"⚖️ Porovnávání",   desc:"Který kelímek je plnější? Dej znaménko!",  comp:CompareEnv,
-    gen:()=>{ let a,b; do{a=[rN(rD()),rD()];b=[rN(rD()),rD()];}while(a[0]===b[0]&&a[1]===b[1]); return {fractionA:a,fractionB:b}; } },
-  { name:"🟧 Čtvercová síť", desc:"Vybarvi správný počet políček v tabulce.",  comp:GridEnv,
-    gen:()=>{ const cfg=[[2,2],[2,3],[2,4],[3,3],[2,5]][Math.floor(Math.random()*5)]; const t=cfg[0]*cfg[1]; return {rows:cfg[0],cols:cfg[1],numerator:Math.floor(Math.random()*(t-1))+1,denominator:t}; } },
-  { name:"📐 Pásek",         desc:"Vybarvi správnou část barevného pásku.",    comp:PasekEnv,
-    gen:()=>{ const d=rD(); return {numerator:rN(d),denominator:d}; } },
-  { name:"🏠 Apartmány",     desc:"Rozsviť světla ve správném počtu bytů!",   comp:ApartmanyEnv,
-    gen:()=>{ const cfg=[[2,2],[2,3],[3,2],[2,4]][Math.floor(Math.random()*4)]; const t=cfg[0]*cfg[1]; return {floors:cfg[0],flatsPerFloor:cfg[1],numerator:Math.floor(Math.random()*(t-1))+1,denominator:t}; } },
-  { name:"🕐 Hodiny",        desc:"Vybarvi správnou výseč ciferníku hodin.",  comp:HodinyEnv,
-    gen:()=>{ const d=[2,3,4,6,12][Math.floor(Math.random()*5)]; return {numerator:rN(d),denominator:d}; } },
-  { name:"🐠 Skupinka",      desc:"Vyber správný počet předmětů ze skupiny.",  comp:SkupinkaEnv,
-    gen:()=>{ const d=[3,4,5,6,8,10][Math.floor(Math.random()*6)]; const icon=SKUPINKA_ICONS[Math.floor(Math.random()*SKUPINKA_ICONS.length)]; return {numerator:rN(d),denominator:d,icon}; } },
-  { name:"🫙 Sklenice",      desc:"Nalij do sklenice přesně tolik, kolik má!",comp:SkleniceEnv,
-    gen:()=>{ const d=rD(); return {numerator:rN(d),denominator:d}; } },
-  { name:"🌡️ Teploměr",     desc:"Nastav rtuť na správnou teplotu na škále.",comp:TeplotaEnv,
-    gen:()=>{ const d=rD(); return {numerator:rN(d),denominator:d}; } },
-  { name:"🍳 Recept",        desc:"Odměř správné množství přísad do mísy.",   comp:ReceptEnv,
-    gen:()=>{ const d=[2,3,4,5,6][Math.floor(Math.random()*5)]; const ing=RECIPE_ITEMS[Math.floor(Math.random()*RECIPE_ITEMS.length)]; return {numerator:rN(d),denominator:d,ingredient:ing}; } },
-  { name:"🪜 Schodiště",     desc:"Vylez po schodech přesně tak vysoko!",     comp:SchodisteEnv,
-    gen:()=>{ const d=[4,5,6,7,8,10][Math.floor(Math.random()*6)]; return {numerator:rN(d),denominator:d}; } },
+  { name:"🍕 Koláč",         desc:"Rozkrájej koláč a sněz správný kousek!",   comp:PizzaEnv,      genPool: poolSimple },
+  { name:"📏 Číselná osa",   desc:"Přesuň kolečko na správné místo na ose.",   comp:NumberLineEnv, genPool: poolSimple },
+  { name:"⚖️ Porovnávání",   desc:"Který kelímek je plnější? Dej znaménko!",  comp:CompareEnv,    genPool: poolCompare },
+  { name:"🟧 Čtvercová síť", desc:"Vybarvi správný počet políček v tabulce.",  comp:GridEnv,       genPool: poolGrid },
+  { name:"📐 Pásek",         desc:"Vybarvi správnou část barevného pásku.",    comp:PasekEnv,      genPool: poolSimple },
+  { name:"🏠 Apartmány",     desc:"Rozsviť světla ve správném počtu bytů!",   comp:ApartmanyEnv,  genPool: poolApartmany },
+  { name:"🕐 Hodiny",        desc:"Vybarvi správnou výseč ciferníku hodin.",  comp:HodinyEnv,     genPool: poolHodiny },
+  { name:"🐠 Skupinka",      desc:"Vyber správný počet předmětů ze skupiny.",  comp:SkupinkaEnv,   genPool: poolSkupinka },
+  { name:"🫙 Sklenice",      desc:"Nalij do sklenice přesně tolik, kolik má!",comp:SkleniceEnv,   genPool: poolSimple },
+  { name:"🌡️ Teploměr",     desc:"Nastav rtuť na správnou teplotu na škále.",comp:TeplotaEnv,    genPool: poolSimple },
+  { name:"🍳 Recept",        desc:"Odměř správné množství přísad do mísy.",   comp:ReceptEnv,     genPool: poolRecept },
+  { name:"🪜 Schodiště",     desc:"Vylez po schodech přesně tak vysoko!",     comp:SchodisteEnv,  genPool: poolSchodiste },
 ];
 
 // ─── Confetti ─────────────────────────────────────────────────────────────────
@@ -979,7 +1034,7 @@ function ZooBar({ collection }) {
 // ─── In-game score dots ───────────────────────────────────────────────────────
 function ScoreDots({ score, c }) {
   return (
-    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+    <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"center"}}>
       {Array.from({length:10}).map((_,i)=>(
         <div key={i} style={{
           width:22,height:22,borderRadius:"50%",
@@ -998,39 +1053,80 @@ function ScoreDots({ score, c }) {
 export default function ZlomkyGame() {
   const [envIdx,   setEnvIdx]   = useState(0);
   const [question, setQuestion] = useState(null);
+  const [pool,     setPool]     = useState([]); // remaining questions this game
   const [score,    setScore]    = useState(0);
+  const scoreRef = useRef(0);
   const [streak,   setStreak]   = useState(0);
   const [total,    setTotal]    = useState(0);
   const [feedback, setFeedback] = useState(null);
   const [phase,    setPhase]    = useState("menu");
   const [collection, setCollection] = useState([]);
+  const [waitingNext, setWaitingNext] = useState(false); // true after wrong answer – waits for manual continue
   const [showConfetti, setShowConfetti] = useState(false);
   const [newReward,    setNewReward]    = useState(null);
 
   const c = ENV_PALETTES[envIdx];
 
-  const nextQ = useCallback(idx=>{ setQuestion(ENVS[idx].gen()); setFeedback(null); },[]);
-
-  const startGame = idx=>{
-    setEnvIdx(idx); setScore(0); setStreak(0); setTotal(0);
-    setFeedback(null); setNewReward(null); setShowConfetti(false);
-    setPhase("playing"); setQuestion(ENVS[idx].gen());
+  const startGame = idx => {
+    // Generate full pool, shuffle, take first 10 as the game queue
+    const fullPool = ENVS[idx].genPool();
+    const gameQueue = fullPool.slice(0, 10);
+    setEnvIdx(idx); setScore(0); scoreRef.current=0; setStreak(0); setTotal(0);
+    setFeedback(null); setNewReward(null); setShowConfetti(false); setWaitingNext(false);
+    setPool(gameQueue.slice(1));   // remaining after first
+    setQuestion(gameQueue[0]);
+    setPhase("playing");
   };
 
-  const handleAnswer = correct=>{
-    const nt=total+1; setTotal(nt);
-    if(correct){ setScore(s=>s+1); setStreak(s=>s+1); setFeedback({ok:true,  msg:getMsg(FEEDBACK.correct)}); }
-    else       { setStreak(0);                         setFeedback({ok:false, msg:getMsg(FEEDBACK.wrong)}); }
-    if(nt>=10){
-      setTimeout(()=>{
-        const fs=correct?score+1:score;
-        const reward=rollAnimal(fs);
-        if(reward){ setCollection(col=>[...col,reward]); setNewReward(reward); }
-        if(fs>=7) setShowConfetti(true);
-        setPhase("result");
-        setTimeout(()=>setShowConfetti(false),4500);
-      },1400);
-    } else { setTimeout(()=>nextQ(envIdx),3000); }
+  const nextQ = useCallback((remainingPool) => {
+    if (remainingPool.length === 0) return;
+    setQuestion(remainingPool[0]);
+    setPool(remainingPool.slice(1));
+    setFeedback(null);
+  }, []);
+
+  const handleAnswer = correct => {
+    const nt = total + 1; setTotal(nt);
+    if(correct){
+      setScore(s=>s+1); scoreRef.current+=1; setStreak(s=>s+1);
+      setFeedback({ok:true, msg:getMsg(FEEDBACK.correct)});
+      if(nt >= 10){
+        setTimeout(()=>{
+          const fs = scoreRef.current;
+          const reward = rollAnimal(fs);
+          if(reward){ setCollection(col=>[...col,reward]); setNewReward(reward); }
+          if(fs >= 7) setShowConfetti(true);
+          setPhase("result");
+          setTimeout(()=>setShowConfetti(false), 4500);
+        }, 1400);
+      } else {
+        setPool(current => { setTimeout(()=>nextQ(current), 3000); return current; });
+      }
+    } else {
+      setStreak(0);
+      setFeedback({ok:false, msg:getMsg(FEEDBACK.wrong)});
+      if(nt >= 10){
+        // last question wrong – still need manual continue before result
+        setWaitingNext(true);
+      } else {
+        setWaitingNext(true); // pause – teacher can discuss
+      }
+    }
+  };
+
+  const handleContinue = () => {
+    setWaitingNext(false);
+    const nt = total; // total already incremented
+    if(nt >= 10){
+      const fs = scoreRef.current;
+      const reward = rollAnimal(fs);
+      if(reward){ setCollection(col=>[...col,reward]); setNewReward(reward); }
+      if(fs >= 7) setShowConfetti(true);
+      setPhase("result");
+      setTimeout(()=>setShowConfetti(false), 4500);
+    } else {
+      setPool(current => { nextQ(current); return current; });
+    }
   };
 
   const Env = ENVS[envIdx]?.comp;
@@ -1137,6 +1233,17 @@ export default function ZlomkyGame() {
               borderRadius:14,color:DARK,fontSize:15,textAlign:"center",
               animation:"fadeIn 0.3s ease"}}>
               {feedback.msg}
+              {waitingNext && (
+                <div style={{marginTop:12}}>
+                  <button onClick={handleContinue} style={{
+                    background:gc.primary, color:"white", border:"none",
+                    borderRadius:30, padding:"10px 28px", fontSize:15,
+                    fontWeight:700, fontFamily:"inherit", cursor:"pointer",
+                    boxShadow:`0 3px 10px ${gc.soft}`}}>
+                    Pokračovat →
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
