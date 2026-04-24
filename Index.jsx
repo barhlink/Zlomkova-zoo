@@ -1,1309 +1,940 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-
-// ─── Shared invariants ────────────────────────────────────────────────────────
-const DARK   = "#0E1F2B";
-const LIGHT  = "#F7FDFF";
-const CORRECT_COLOR = "#22C55E";
-const WRONG_COLOR   = "#EF4444";
-
-// Per-environment palettes – tropická paleta 🌴
-const ENV_PALETTES = [
-  { primary:"#FF5733", secondary:"#FF8C66", soft:"#FFD6CB", bg:"#FFF4F1", muted:"#CC3A1A", hint:"#E02020" }, // 🍕 Koláč       – korálová
-  { primary:"#0094C6", secondary:"#00C9F0", soft:"#B3EEF9", bg:"#EDFBFF", muted:"#006F94", hint:"#005F8A" }, // 📏 Osa         – azurová
-  { primary:"#8B00CC", secondary:"#CC66FF", soft:"#ECC6FF", bg:"#F9EEFF", muted:"#6600AA", hint:"#AA00EE" }, // ⚖️ Porovnávání – fuchsiová
-  { primary:"#00A86B", secondary:"#2DDD99", soft:"#A3F5D8", bg:"#EDFFF7", muted:"#007A4D", hint:"#009955" }, // 🟧 Mřížka      – smaragdová
-  { primary:"#FF9900", secondary:"#FFCC00", soft:"#FFF0A3", bg:"#FFFCE8", muted:"#CC7700", hint:"#E68A00" }, // 📐 Pásek       – tropická žlutá
-  { primary:"#00B4A0", secondary:"#00E5CC", soft:"#A3F5EE", bg:"#EDFFFE", muted:"#007A6E", hint:"#009985" }, // 🏠 Apartmány   – tyrkys
-  { primary:"#FF2D8A", secondary:"#FF70B8", soft:"#FFB8DE", bg:"#FFF0F7", muted:"#CC1A6A", hint:"#E0006A" }, // 🕐 Hodiny      – tropická růžová
-  { primary:"#6200EE", secondary:"#9C55FF", soft:"#DDB8FF", bg:"#F4EEFF", muted:"#4A00BB", hint:"#7700CC" }, // 🐠 Skupinka    – elektrická fialová
-  { primary:"#0055FF", secondary:"#3390FF", soft:"#AACCFF", bg:"#EEF4FF", muted:"#003DBB", hint:"#0044CC" }, // 🫙 Sklenice    – kobaltová
-  { primary:"#FF3333", secondary:"#FF7777", soft:"#FFB8B8", bg:"#FFF0F0", muted:"#CC1111", hint:"#EE0000" }, // 🌡️ Teploměr   – ohnivá
-  { primary:"#CC6600", secondary:"#FF9933", soft:"#FFD9A3", bg:"#FFF5E8", muted:"#994D00", hint:"#E07700" }, // 🍳 Recept      – mango
-  { primary:"#1A7A4A", secondary:"#2ECC71", soft:"#A9F5C8", bg:"#EDFFF5", muted:"#145C37", hint:"#17A558" }, // 🪜 Schodiště   – lesní zelená
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Zlomková zoo – Zvídavě.cz</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Baloo 2',sans-serif;background:#F0FDF8;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px 16px}
+button{font-family:inherit;cursor:pointer;transition:transform .1s}
+button:active:not(:disabled){transform:scale(.96)}
+button:disabled{cursor:not-allowed;opacity:.6}
+#app{width:100%;max-width:500px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.header{text-align:center;margin-bottom:8px}
+.header h1{font-size:28px;font-weight:800;color:#0E1F2B}
+.header p{color:#6B7280;font-size:13px;margin-top:3px}
+/* Menu grid */
+.env-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
+.env-btn{background:#fff;border-radius:14px;padding:13px 11px;border:2px solid #E2EBF0;text-align:left;display:flex;flex-direction:column;gap:3px;transition:transform .15s,box-shadow .15s;min-height:44px}
+.env-btn:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.08)}
+.env-btn .icon{font-size:24px}
+.env-btn .name{font-size:13px;font-weight:700;color:#0E1F2B}
+.env-btn .desc{font-size:11px;color:#9CA3AF;font-weight:400}
+/* Stats bar */
+.stats-bar{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-radius:14px;border:1.5px solid #E2EBF0;background:#F9FAFB;width:100%;font-size:13px;color:#6B7280}
+.stats-name{font-weight:800;font-size:14px}
+/* Progress dots */
+.dots{display:flex;gap:4px;justify-content:center;flex-wrap:wrap}
+.dot{width:22px;height:22px;border-radius:50%;border:2px solid #E2EBF0;background:#E2EBF0;display:flex;align-items:center;justify-content:center;font-size:10px;transition:background .3s}
+.dot.done{background:#22C55E;border-color:#22C55E;color:#fff}
+/* Progress bar */
+.progress-track{width:100%;height:6px;background:#E2EBF0;border-radius:4px;overflow:hidden}
+.progress-fill{height:100%;border-radius:4px;transition:width .4s;background:#22C55E}
+/* Question card */
+.q-card{background:#fff;border-radius:18px;padding:22px 18px;border:1.5px solid #E2EBF0;box-shadow:0 4px 20px rgba(0,0,0,.06);width:100%;display:flex;flex-direction:column;align-items:center;gap:16px}
+/* Feedback bubble */
+.bubble-wrap{display:flex;align-items:flex-end;gap:10px;width:100%;animation:fadeIn .25s ease}
+.bubble-avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;border:2px solid #E2EBF0;background:#F9FAFB}
+.bubble-msg{flex:1;border-radius:18px 18px 18px 4px;padding:11px 15px;font-size:14px;line-height:1.55;border:1.5px solid #E2EBF0;background:#fff;min-height:52px;color:#6B7280}
+.bubble-msg.active{background:#fff;border-color:inherit}
+.bubble-label{font-style:italic;font-size:12px;color:#9CA3AF;margin-bottom:3px}
+/* Buttons */
+.btn-primary{border:none;border-radius:28px;padding:11px 30px;font-size:15px;font-weight:700;min-height:44px;color:#fff}
+.btn-outline{border-radius:28px;padding:10px 28px;font-size:15px;font-weight:700;min-height:44px;background:#fff}
+.btn-ghost{background:transparent;border:1.5px solid #E2EBF0;border-radius:20px;color:#9CA3AF;font-size:13px;min-height:44px;padding:0 16px;display:block;width:100%;max-width:180px;margin:0 auto}
+.btn-retry{border-radius:28px;padding:9px 22px;font-size:14px;font-weight:700;min-height:44px;background:#fff;margin-top:10px}
+/* SVG clickable */
+svg path,svg rect,svg g{cursor:pointer}
+/* Result */
+.result-card{text-align:center;width:100%;display:flex;flex-direction:column;align-items:center;gap:16px}
+.result-guide-bubble{display:flex;align-items:flex-end;gap:10px;width:100%;max-width:380px;text-align:left}
+/* Fraction display */
+.frac{display:inline-flex;flex-direction:column;align-items:center;font-weight:800;line-height:1.1;vertical-align:middle;margin:0 3px}
+.frac-bar{width:100%;height:2px;border-radius:1px;margin:1px 0}
+/* Instruction */
+.instr{font-size:18px;color:#555;text-align:center;font-weight:600}
+.instr strong{font-weight:800}
+/* Selected count */
+.sel-count{font-size:13px;color:#9CA3AF}
+/* Stepper (zoo2 style) */
+.stepper{display:inline-flex;flex-direction:column;align-items:center;gap:4px}
+.stepper-row{display:flex;align-items:center;gap:8px}
+.stepper-num{font-size:32px;font-weight:800;min-width:44px;text-align:center;color:#0E1F2B}
+.stepper-btn{width:44px;height:44px;border-radius:50%;font-size:20px;font-weight:700;background:#fff}
+.stepper-bar{width:110px;height:3px;background:#0E1F2B;border-radius:2px}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ─── Palety ───────────────────────────────────────────────────────────────────
+const PAL=[
+  {p:"#FF5733",s:"#FF8C66",soft:"#FFD6CB",bg:"#FFF4F1",m:"#CC3A1A"},
+  {p:"#0094C6",s:"#00C9F0",soft:"#B3EEF9",bg:"#EDFBFF",m:"#006F94"},
+  {p:"#8B00CC",s:"#CC66FF",soft:"#ECC6FF",bg:"#F9EEFF",m:"#6600AA"},
+  {p:"#00A86B",s:"#2DDD99",soft:"#A3F5D8",bg:"#EDFFF7",m:"#007A4D"},
+  {p:"#FF9900",s:"#FFCC00",soft:"#FFF0A3",bg:"#FFFCE8",m:"#CC7700"},
+  {p:"#00B4A0",s:"#00E5CC",soft:"#A3F5EE",bg:"#EDFFFE",m:"#007A6E"},
+  {p:"#FF2D8A",s:"#FF70B8",soft:"#FFB8DE",bg:"#FFF0F7",m:"#CC1A6A"},
+  {p:"#6200EE",s:"#9C55FF",soft:"#DDB8FF",bg:"#F4EEFF",m:"#4A00BB"},
+  {p:"#0055FF",s:"#3390FF",soft:"#AACCFF",bg:"#EEF4FF",m:"#003DBB"},
+  {p:"#FF3333",s:"#FF7777",soft:"#FFB8B8",bg:"#FFF0F0",m:"#CC1111"},
+  {p:"#CC6600",s:"#FF9933",soft:"#FFD9A3",bg:"#FFF5E8",m:"#994D00"},
+  {p:"#1A7A4A",s:"#2ECC71",soft:"#A9F5C8",bg:"#EDFFF5",m:"#145C37"},
 ];
 
-// NVC + growth mindset feedback
-// Correct: pojmenovává konkrétní akci nebo úsilí, ne osobu
-// Wrong: neutrální pozorování + otevřená otázka, bez hodnocení
-const FEEDBACK = {
-  correct: [
-    "Vidím, že sis to pořádně rozmyslel/a. To funguje! 🌱",
-    "Tenhle zlomek jsi přečetl/a správně. Postup byl jasný. ✅",
-    "Povedlo se ti to najít. Co ti k tomu pomohlo? 🤔",
-    "To dalo práci a vyplatilo se. 💛",
-    "Zvládl/a jsi to – a to je to, na čem záleží. ✨",
-    "Mozek pracoval a výsledek to ukazuje. 🧠",
-  ],
-  wrong: [
-    "Tohle se nepodařilo úplně přesně. Co zkusit jinak? 🔍",
-    "Zajímavá volba – co tě k ní vedlo? 🤔",
-    "Tenhle zlomek ještě čeká, až ho objevíš. Zkus znovu. 🔄",
-    "Chyba je součást cesty. Co vidíš teď jinak? 👀",
-    "Ještě ne – ale čím více zkoušíš, tím blíž jsi. 💪",
-  ],
-};
-const getMsg = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
-// ─── Animal reward system – probabilistic, not perfection-based ──────────────
-// Zvířátka jsou náhodná – dostaneš je za to, že hraješ, ne za dokonalost.
-// Skóre lehce posouvá pravděpodobnost, ale i při nízkém skóre máš šanci.
-// Každá hra má ~80% šanci získat NĚJAKÉ zvířátko.
-const ANIMALS = [
-  { emoji:"🦄", name:"Jednorožec", color:"#C026D3", baseProb: 0.05 },
-  { emoji:"🐼", name:"Panda",      color:"#374151", baseProb: 0.10 },
-  { emoji:"🦊", name:"Liška",      color:"#EA580C", baseProb: 0.18 },
-  { emoji:"🦁", name:"Lev",        color:"#D97706", baseProb: 0.28 },
-  { emoji:"🐸", name:"Žabák",      color:"#16A34A", baseProb: 0.42 },
-  { emoji:"🐣", name:"Kuřátko",    color:"#CA8A04", baseProb: 0.65 },
+// ─── Průvodci ─────────────────────────────────────────────────────────────────
+const GUIDES=[
+  {e:"🦊",n:"Liška",
+   c:["Čitatel říká kolik, jmenovatel kolik celkem – sedělo to. Všimla ses toho hned?","Výseče jsou stejně velké. Spočítal/a jsi nejdřív všechny, nebo rovnou správné?","Koláč rozdělený na {d} dílů – vybral/a jsi přesně {n}. Jak sis to rozdělil/a?"],
+   r:["Co tě k té volbě vedlo?","Jak jsi přemýšlel/a o jmenovateli?","Kde jsi si nebyl/a jistý/á?"]},
+  {e:"🐣",n:"Kuřátko",
+   c:["Na ose od 0 do 1 jsi to umístil/a přesně. Jak sis to rozdělil/a v hlavě?","Jmenovatel {d} říká, na kolik dílů osu rozdělit. Viděl/a jsi to?","Trefil/a jsi to. Počítal/a jsi od nuly, nebo odhadoval/a?"],
+   r:["Kde jsi čekal/a, že to číslo bude?","Co bylo těžké na odhadu polohy?","Jak sis představoval/a vzdálenost od nuly?"]},
+  {e:"🐸",n:"Žabák",
+   c:["Ty dva zlomky mají různé jmenovatele. Jak jsi je porovnal/a?","Vizualizace pomáhá – kelímky to ukázaly. Viděl/a jsi výšku hladiny?","Porovnání zlomků s různými jmenovateli – jak jsi postupoval/a?"],
+   r:["Jak jsi se rozhodoval/a mezi těmi dvěma zlomky?","Co tě zmátlo?","Kdy ti přijde porovnávání těžké?"]},
+  {e:"🐼",n:"Panda",
+   c:["Políček je celkem {total} a ty jsi vybral/a přesně {n}. Jak jsi počítal/a?","Jmenovatel = celkový počet políček, čitatel = kolik vybarvit. Sedělo to.","Šel/šla jsi po řádcích?"],
+   r:["Jak jsi počítal/a políčka?","Co bylo matoucí?","Jak jsi věděl/a, kdy přestat vybarvovat?"]},
+  {e:"🦄",n:"Jednorožec",
+   c:["Pásek rozdělený na {d} dílů, vybráno {n} – postup byl vidět.","Zlomek říká, jakou část pásku vyplnit. Pomohla ti čísla na dílcích?","Čitatel {n} a jmenovatel {d} – přeložil/a jsi to na konkrétní díly."],
+   r:["Jak jsi přemýšlel/a o délce vybarveného úseku?","Co tě zastavilo?","Kde jsi si nebyl/a jistý/á?"]},
+  {e:"🦁",n:"Lev",
+   c:["V domě je {total} bytů a ty jsi vybral/a přesně {n}. Jak jsi to spočítal/a?","Nejdřív celkový počet bytů, pak správný díl. Šlo to vidět na mřížce.","Byty v domě jako diskrétní model – tady to fungovalo."],
+   r:["Jak jsi přemýšlel/a o počtu bytů?","Co bylo matoucí?","Spočítal/a jsi nejdřív všechny?"]},
+  {e:"🦊",n:"Liška",
+   c:["Ciferník má {d} výsečí a ty jsi vybral/a {n}. Pomohly ti hodinové značky?","Kruhový model funguje stejně jako koláč. Viděl/a jsi tu podobnost?","Hodiny rozdělené na {d} dílů – jak jsi to vizualizoval/a?"],
+   r:["Jak jsi viděl/a výseče na ciferníku?","Co bylo jinak než u koláče?","Kde jsi se ztratil/a?"]},
+  {e:"🐣",n:"Kuřátko",
+   c:["Ze skupiny {d} předmětů jsi vybral/a přesně {n}. Počítal/a jsi popořadě?","Každý předmět je jedna jednotka – tady to fungovalo.","Zlomek {n}/{d} ze skupiny předmětů – jak jsi postupoval/a?"],
+   r:["Jak jsi vybíral/a – po jednom?","Co tě vedlo k tomuhle počtu?","Kde ti to nedávalo smysl?"]},
+  {e:"🐸",n:"Žabák",
+   c:["Sklenice má {d} stejné díly a ty jsi trefil/a {n}. Jak jsi odhadoval/a výšku?","Kontinuální model – odhad podílu výšky. Fungoval.","Hladina na {n}/{d} sklenice – trefil/a jsi to."],
+   r:["Jak jsi odhadoval/a výšku hladiny?","Co bylo těžké?","Proč jsi zastavil/a tam kde jsi?"]},
+  {e:"🦁",n:"Lev",
+   c:["Rtuť sahá přesně na {n}/{d}. Jak jsi věděl/a, kde je ta hranice?","Stupnice od 0 do 1 – jmenovatel říká na kolik dílů. Viděl/a jsi to?","Teploměr jako lineární model zlomku – trefil/a jsi {n}/{d}."],
+   r:["Jak jsi hledal/a správnou polohu?","Co tě zmátlo na stupnici?","Kde jsi si nebyl/a jistý/á?"]},
+  {e:"🐼",n:"Panda",
+   c:["Odměřil/a jsi {n} ze {d} {u}. Pomohl ti vizuální počet v misce?","Recept říká zlomek – přeložil/a jsi ho na konkrétní množství.","Zlomek {n}/{d} přeložený na {u} – funguje."],
+   r:["Jak jsi přeložil/a zlomek na počet?","Co bylo nejasné?","Jak přemýšlíš o zlomku jako množství?"]},
+  {e:"🦄",n:"Jednorožec",
+   c:["Schodiště má {d} schodů a ty jsi označil/a {n}. Jak jsi to poznal/a?","Šel/šla jsi schodiště odspodu nebo jinak? Postup byl jasný.","Zlomek {n}/{d} na schodišti – správně."],
+   r:["Jak jsi počítal/a schody?","Kde jsi se zastavil/a a proč?","Co bylo jinak než čekáš?"]},
 ];
 
-// Vrátí jedno náhodné zvířátko (nebo null ~20% případů).
-// scoreFactor 0..1 mírně zvyšuje pravděpodobnost vzácnějších.
-function rollAnimal(score) {
-  const sf = score / 10; // 0..1
-  // Celková šance získat zvíře ~80 % + malý bonus za skóre
-  if (Math.random() > 0.80 + sf * 0.15) return null;
-
-  // Váhovaný los – vyšší skóre trochu posouvá váhy k vzácnějším
-  const weights = ANIMALS.map(a => {
-    const boost = a.baseProb < 0.3 ? sf * 0.08 : 0; // vzácná zvířata trochu boostujeme
-    return Math.max(0.01, a.baseProb + boost);
-  });
-  const total = weights.reduce((s, w) => s + w, 0);
-  let rand = Math.random() * total;
-  for (let i = 0; i < ANIMALS.length; i++) {
-    rand -= weights[i];
-    if (rand <= 0) return { ...ANIMALS[i], count: 1 };
-  }
-  return { ...ANIMALS[ANIMALS.length - 1], count: 1 };
+function fmtGuide(msg,q){
+  return msg
+    .replace(/\{n\}/g,q.numerator??'')
+    .replace(/\{d\}/g,q.denominator??'')
+    .replace(/\{total\}/g,q.rows&&q.cols?q.rows*q.cols:q.floors&&q.flatsPerFloor?q.floors*q.flatsPerFloor:q.denominator??'')
+    .replace(/\{u\}/g,q.ingredient?.unitGen??'');
 }
+function randMsg(arr,q){return fmtGuide(arr[Math.floor(Math.random()*arr.length)],q);}
+function readTime(msg){return Math.min(6000,Math.max(2200,(msg||'').split(/\s+/).length*260));}
 
-// ─── Shared button ─────────────────────────────────────────────────────────────
-function Btn({ disabled, onClick, children, c, outline }) {
-  const bg  = outline ? "white"     : (disabled ? "#CBD5E1" : c.primary);
-  const col = outline ? c.primary   : "white";
-  const bdr = outline ? c.primary   : "transparent";
-  return (
-    <button onClick={onClick} disabled={disabled} style={{
-      background: bg, color: col, border: `2px solid ${bdr}`,
-      borderRadius: 30, padding: "11px 32px", fontSize: 15,
-      fontFamily: "inherit", fontWeight: 700,
-      cursor: disabled ? "not-allowed" : "pointer",
-      transition: "transform 0.1s",
-    }}>
-      {children}
-    </button>
-  );
-}
-
-// ─── ENV 1: Koláč ─────────────────────────────────────────────────────────────
-function PizzaEnv({ question, onAnswer, c }) {
-  const { numerator, denominator } = question;
-  const [sel, setSel] = useState([]);
-  const [done, setDone] = useState(false);
-  useEffect(() => { setSel([]); setDone(false); }, [question]);
-
-  const toggle = (i) => { if (done) return; setSel(p => p.includes(i) ? p.filter(x=>x!==i) : [...p,i]); };
-  const submit = () => { if (done) return; setDone(true); onAnswer(sel.length === numerator); };
-
-  const cx=120, cy=120, r=100;
-  const path = (i) => {
-    const a=360/denominator, s=(i*a-90)*Math.PI/180, e=((i+1)*a-90)*Math.PI/180;
-    const x1=cx+r*Math.cos(s),y1=cy+r*Math.sin(s),x2=cx+r*Math.cos(e),y2=cy+r*Math.sin(e);
-    return `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${a>180?1:0} 1 ${x2},${y2} Z`;
-  };
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>
-        Vybarvi <strong style={{color:c.primary}}>{numerator}/{denominator}</strong> dílu koláče.
-      </p>
-      <svg width={240} height={240} viewBox="0 0 240 240">
-        {Array.from({length:denominator}).map((_,i)=>(
-          <path key={i} d={path(i)} fill={sel.includes(i)?c.secondary:c.soft}
-            stroke={c.primary} strokeWidth={2} style={{cursor:"pointer",transition:"fill 0.18s"}}
-            onClick={()=>toggle(i)} />
-        ))}
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke={c.primary} strokeWidth={3}/>
-      </svg>
-      <div style={{color:c.muted,fontSize:14}}>Vybráno: <strong>{sel.length}</strong> z {denominator}</div>
-      <Btn c={c} disabled={done||sel.length===0} onClick={submit}>Zkontrolovat ✓</Btn>
-    </div>
-  );
-}
-
-// ─── ENV 2: Číselná osa ────────────────────────────────────────────────────────
-function NumberLineEnv({ question, onAnswer, c }) {
-  const { numerator, denominator } = question;
-  const [pos, setPos] = useState(0.5);
-  const [placed, setPlaced] = useState(false);
-  const [done, setDone] = useState(false);
-  const [hint, setHint] = useState(false);
-  const [result, setResult] = useState(null); // null | true | false
-  const svgRef = useRef(null);
-  const drag = useRef(false);
-
-  useEffect(() => { setPos(0.5); setPlaced(false); setDone(false); setHint(false); setResult(null); drag.current=false; }, [question]);
-
-  const PAD=40, W=320, H=130, LY=68, TL=W-PAD*2;
-  const toX = p => PAD + p*TL;
-  const toP = x => Math.max(0,Math.min(1,(x-PAD)/TL));
-  const cx  = e => e.touches ? e.touches[0].clientX : e.clientX;
-
-  const onMove = useCallback(e => {
-    if (!drag.current||!svgRef.current) return;
-    const r=svgRef.current.getBoundingClientRect();
-    setPos(toP((cx(e)-r.left)*(W/r.width)));
-    setPlaced(true);
-  }, []);
-  const endDrag = useCallback(()=>{ drag.current=false; },[]);
-  useEffect(()=>{
-    window.addEventListener("mousemove",onMove);
-    window.addEventListener("mouseup",endDrag);
-    window.addEventListener("touchmove",onMove,{passive:false});
-    window.addEventListener("touchend",endDrag);
-    return ()=>{
-      window.removeEventListener("mousemove",onMove);
-      window.removeEventListener("mouseup",endDrag);
-      window.removeEventListener("touchmove",onMove);
-      window.removeEventListener("touchend",endDrag);
-    };
-  },[onMove,endDrag]);
-
-  const hx = toX(pos), cx2 = toX(numerator/denominator);
-  const ok = Math.abs(pos - numerator/denominator) <= 0.5/denominator;
-
-  const submit = () => {
-    if (done||!placed) return;
-    setDone(true); setResult(ok);
-    setTimeout(()=>onAnswer(ok),1200);
-  };
-
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>
-        Umísti <strong style={{color:c.primary,fontSize:22}}>{numerator}/{denominator}</strong> na číselnou osu.
-      </p>
-      <div style={{fontSize:12,color:c.muted,background:c.soft,borderRadius:8,padding:"5px 12px",border:`1px solid ${c.secondary}`}}>
-        💭 Žádné pomůcky – jen tvoje hlava a osa od 0 do 1
-      </div>
-
-      <svg ref={svgRef} width={W} height={H} viewBox={`0 0 ${W} ${H}`}
-        style={{overflow:"visible",touchAction:"none",width:"100%",maxWidth:W,cursor:done?"default":"pointer"}}
-        onClick={e=>{
-          if(done||drag.current) return;
-          const r=svgRef.current.getBoundingClientRect();
-          setPos(toP((e.clientX-r.left)*(W/r.width))); setPlaced(true);
-        }}>
-        {/* track bg */}
-        <rect x={PAD} y={LY-4} width={TL} height={8} rx={4} fill={c.soft}/>
-        {/* filled */}
-        <rect x={PAD} y={LY-4} width={Math.max(0,hx-PAD)} height={8} rx={4}
-          fill={result===null?c.secondary:result?CORRECT_COLOR:WRONG_COLOR} style={{transition:"fill 0.3s"}}/>
-        {/* arrows */}
-        <polygon points={`${PAD-4},${LY} ${PAD-14},${LY-6} ${PAD-14},${LY+6}`} fill={DARK}/>
-        <polygon points={`${PAD+TL+4},${LY} ${PAD+TL+14},${LY-6} ${PAD+TL+14},${LY+6}`} fill={DARK}/>
-        {/* end ticks */}
-        {[0,1].map(v=>(
-          <g key={v}>
-            <line x1={toX(v)} y1={LY-12} x2={toX(v)} y2={LY+12} stroke={DARK} strokeWidth={2.5}/>
-            <text x={toX(v)} y={LY+28} textAnchor="middle" fontSize={14} fontWeight="bold" fill={DARK} fontFamily="inherit">{v}</text>
-          </g>
-        ))}
-        {/* hint ticks */}
-        {hint && Array.from({length:denominator-1}).map((_,i)=>(
-          <line key={i} x1={toX((i+1)/denominator)} y1={LY-7} x2={toX((i+1)/denominator)} y2={LY+7}
-            stroke={c.hint} strokeWidth={1.5} strokeDasharray="3,2"/>
-        ))}
-        {/* correct marker after answer */}
-        {result!==null && (
-          <g>
-            <line x1={cx2} y1={LY-24} x2={cx2} y2={LY+24} stroke={CORRECT_COLOR} strokeWidth={2.5} strokeDasharray="4,3"/>
-            <circle cx={cx2} cy={LY-28} r={14} fill={CORRECT_COLOR}/>
-            <text x={cx2} y={LY-23} textAnchor="middle" fontSize={11} fill="white" fontFamily="inherit" fontWeight="bold">
-              {numerator}/{denominator}
-            </text>
-          </g>
-        )}
-        {/* handle */}
-        {!done && (
-          <g>
-            <circle cx={hx} cy={LY} r={18} fill={placed?c.secondary:"#DDD"}
-              stroke={placed?c.primary:"#AAA"} strokeWidth={3}
-              style={{cursor:"grab",filter:"drop-shadow(0 2px 6px rgba(0,0,0,0.2))",transition:"fill 0.2s"}}
-              onMouseDown={e=>{if(!done){drag.current=true;e.preventDefault();}}}
-              onTouchStart={e=>{if(!done){drag.current=true;e.preventDefault();}}}/>
-            <text x={hx} y={LY+6} textAnchor="middle" fontSize={18} fill={placed?DARK:"#AAA"}
-              fontFamily="inherit" fontWeight="bold" style={{pointerEvents:"none"}}>
-              {placed?"•":"?"}
-            </text>
-          </g>
-        )}
-        {done && <circle cx={hx} cy={LY} r={18} fill={result?CORRECT_COLOR:WRONG_COLOR} stroke="white" strokeWidth={3}
-          style={{filter:"drop-shadow(0 2px 6px rgba(0,0,0,0.2))"}}/>}
-        {/* error arrow */}
-        {result===false && (
-          <text x={(hx+cx2)/2} y={LY+46} textAnchor="middle" fontSize={11} fill={WRONG_COLOR} fontFamily="inherit">
-            ← správná poloha
-          </text>
-        )}
-      </svg>
-
-      <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center"}}>
-        {!done && (
-          <button onClick={()=>setHint(h=>!h)} style={{
-            background:hint?c.hint:"white", color:hint?"white":c.hint,
-            border:`2px solid ${c.hint}`, borderRadius:20, padding:"8px 16px",
-            fontSize:13, fontFamily:"inherit", cursor:"pointer"}}>
-            {hint?"🔍 Skrýt":"💡 Nápověda"}
-          </button>
-        )}
-        <Btn c={c} disabled={done||!placed} onClick={submit}>Zkontrolovat ✓</Btn>
-      </div>
-      {!placed && <div style={{fontSize:12,color:c.muted}}>Táhni kolečko nebo klikni na osu</div>}
-    </div>
-  );
-}
-
-// ─── ENV 3: Porovnávání ────────────────────────────────────────────────────────
-function CompareEnv({ question, onAnswer, c }) {
-  const { fractionA, fractionB } = question;
-  const [pick, setPick] = useState(null);
-  const [done, setDone] = useState(false);
-  useEffect(()=>{ setPick(null); setDone(false); }, [question]);
-
-  const vA=fractionA[0]/fractionA[1], vB=fractionB[0]/fractionB[1];
-  const correct = vA>vB?">":vA<vB?"<":"=";
-  const submit = ()=>{ if(done||!pick) return; setDone(true); onAnswer(pick===correct); };
-
-  const Bar = ({frac, color}) => (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-      <div style={{fontSize:24,fontWeight:800,color:DARK}}>{frac[0]}/{frac[1]}</div>
-      <div style={{width:56,height:130,background:c.soft,borderRadius:8,border:`2px solid ${c.secondary}`,position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",bottom:0,width:"100%",height:`${(frac[0]/frac[1])*100}%`,background:color,transition:"height 0.5s"}}/>
-      </div>
-    </div>
-  );
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:20}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>Doplň správné znaménko mezi zlomky.</p>
-      <div style={{display:"flex",gap:20,alignItems:"center"}}>
-        <Bar frac={fractionA} color={c.primary}/>
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {[">","=","<"].map(sym=>(
-            <button key={sym} onClick={()=>!done&&setPick(sym)} style={{
-              width:48,height:48,borderRadius:"50%",
-              border:`2.5px solid ${pick===sym?c.primary:c.soft}`,
-              background:pick===sym?c.secondary:"white",
-              color:DARK,fontSize:22,fontWeight:"bold",cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s"}}>
-              {sym}
-            </button>
-          ))}
-        </div>
-        <Bar frac={fractionB} color={c.secondary}/>
-      </div>
-      <Btn c={c} disabled={done||!pick} onClick={submit}>Zkontrolovat ✓</Btn>
-    </div>
-  );
-}
-
-// ─── ENV 4: Čtvercová síť ──────────────────────────────────────────────────────
-function GridEnv({ question, onAnswer, c }) {
-  const { rows, cols, numerator, denominator } = question;
-  const total=rows*cols;
-  const [sel, setSel] = useState(new Set());
-  const [done, setDone] = useState(false);
-  useEffect(()=>{ setSel(new Set()); setDone(false); }, [question]);
-  const toggle = i=>{ if(done) return; setSel(p=>{ const n=new Set(p); n.has(i)?n.delete(i):n.add(i); return n; }); };
-  const submit = ()=>{ if(done) return; setDone(true); onAnswer(sel.size===numerator); };
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>
-        Vybarvi <strong style={{color:c.primary}}>{numerator}/{denominator}</strong> políček.
-      </p>
-      <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},44px)`,gap:4}}>
-        {Array.from({length:total}).map((_,i)=>(
-          <div key={i} onClick={()=>toggle(i)} style={{
-            width:44,height:44,borderRadius:7,
-            background:sel.has(i)?c.secondary:c.soft,
-            border:`2px solid ${sel.has(i)?c.primary:c.secondary}`,
-            cursor:"pointer",transition:"all 0.15s"}}/>
-        ))}
-      </div>
-      <div style={{color:c.muted,fontSize:14}}>Vybráno: <strong>{sel.size}</strong> z {total}</div>
-      <Btn c={c} disabled={done||sel.size===0} onClick={submit}>Zkontrolovat ✓</Btn>
-    </div>
-  );
-}
-
-// ─── ENV 5: Pásek ─────────────────────────────────────────────────────────────
-function PasekEnv({ question, onAnswer, c }) {
-  const { numerator, denominator } = question;
-  const [sel, setSel] = useState(new Set());
-  const [done, setDone] = useState(false);
-  useEffect(()=>{ setSel(new Set()); setDone(false); }, [question]);
-  const toggle = i=>{ if(done) return; setSel(p=>{ const n=new Set(p); n.has(i)?n.delete(i):n.add(i); return n; }); };
-  const submit = ()=>{ if(done) return; setDone(true); onAnswer(sel.size===numerator); };
-  const W=300,H=70,sw=W/denominator;
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>
-        Vybarvi <strong style={{color:c.primary}}>{numerator}/{denominator}</strong> pásku.
-      </p>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{cursor:"pointer"}}>
-        {Array.from({length:denominator}).map((_,i)=>(
-          <g key={i} onClick={()=>toggle(i)}>
-            <rect x={i*sw} y={8} width={sw} height={H-16}
-              fill={sel.has(i)?c.secondary:c.soft} style={{transition:"fill 0.18s"}}/>
-            <rect x={i*sw} y={8} width={sw} height={H-16}
-              fill="none" stroke={c.primary} strokeWidth={1.5} style={{pointerEvents:"none"}}/>
-            {denominator<=10 && (
-              <text x={i*sw+sw/2} y={H/2+5} textAnchor="middle" fontSize={11}
-                fill={sel.has(i)?DARK:c.muted} fontFamily="inherit" style={{pointerEvents:"none"}}>
-                {i+1}
-              </text>
-            )}
-          </g>
-        ))}
-        <rect x={0} y={8} width={W} height={H-16} rx={8} fill="none" stroke={c.primary} strokeWidth={2.5}/>
-      </svg>
-      <div style={{color:c.muted,fontSize:14}}>Vybráno: <strong>{sel.size}</strong> z {denominator}</div>
-      <Btn c={c} disabled={done||sel.size===0} onClick={submit}>Zkontrolovat ✓</Btn>
-    </div>
-  );
-}
-
-// ─── ENV 6: Apartmány ─────────────────────────────────────────────────────────
-function ApartmanyEnv({ question, onAnswer, c }) {
-  const { numerator, denominator, floors, flatsPerFloor } = question;
-  const total=floors*flatsPerFloor;
-  const [sel, setSel] = useState(new Set());
-  const [done, setDone] = useState(false);
-  useEffect(()=>{ setSel(new Set()); setDone(false); }, [question]);
-  const toggle = i=>{ if(done) return; setSel(p=>{ const n=new Set(p); n.has(i)?n.delete(i):n.add(i); return n; }); };
-  const submit = ()=>{ if(done) return; setDone(true); onAnswer(sel.size===numerator); };
-  const cw=56,ch=48,g=5, bW=flatsPerFloor*(cw+g)+g, bH=floors*(ch+g)+g+32;
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>
-        Vybarvi <strong style={{color:c.primary}}>{numerator}/{denominator}</strong> bytů v domě.
-      </p>
-      <svg width={bW} height={bH} viewBox={`0 0 ${bW} ${bH}`}>
-        <polygon points={`${bW/2},2 ${bW-6},30 6,30`} fill={c.primary}/>
-        <rect x={0} y={27} width={bW} height={bH-27} fill={c.soft} rx={5}/>
-        {Array.from({length:floors}).map((_,row)=>
-          Array.from({length:flatsPerFloor}).map((_,col)=>{
-            const idx=row*flatsPerFloor+col;
-            const x=g+col*(cw+g), y=32+g+row*(ch+g), on=sel.has(idx);
-            return (
-              <g key={idx} onClick={()=>toggle(idx)} style={{cursor:"pointer"}}>
-                <rect x={x} y={y} width={cw} height={ch} rx={4}
-                  fill={on?c.secondary:"white"} stroke={on?c.primary:c.soft}
-                  strokeWidth={on?2:1.5} style={{transition:"fill 0.15s"}}/>
-                <rect x={x+8}  y={y+7} width={13} height={16} rx={2} fill={on?c.primary:c.secondary} style={{pointerEvents:"none"}}/>
-                <rect x={x+35} y={y+7} width={13} height={16} rx={2} fill={on?c.primary:c.secondary} style={{pointerEvents:"none"}}/>
-                {row===floors-1 && <rect x={x+19} y={y+28} width={18} height={16} rx={2} fill={on?DARK:c.muted} style={{pointerEvents:"none"}}/>}
-              </g>
-            );
-          })
-        )}
-      </svg>
-      <div style={{color:c.muted,fontSize:14}}>Vybráno: <strong>{sel.size}</strong> z {total}</div>
-      <Btn c={c} disabled={done||sel.size===0} onClick={submit}>Zkontrolovat ✓</Btn>
-    </div>
-  );
-}
-
-// ─── ENV 7: Hodiny ────────────────────────────────────────────────────────────
-function HodinyEnv({ question, onAnswer, c }) {
-  const { numerator, denominator } = question;
-  const [sel, setSel] = useState([]);
-  const [done, setDone] = useState(false);
-  useEffect(()=>{ setSel([]); setDone(false); }, [question]);
-  const toggle = i=>{ if(done) return; setSel(p=>p.includes(i)?p.filter(x=>x!==i):[...p,i]); };
-  const submit = ()=>{ if(done) return; setDone(true); onAnswer(sel.length===numerator); };
-  const cx=130,cy=130,r=95, sa=360/denominator;
-  const path = i=>{ const s=(i*sa-90)*Math.PI/180,e=((i+1)*sa-90)*Math.PI/180;
-    const x1=cx+r*Math.cos(s),y1=cy+r*Math.sin(s),x2=cx+r*Math.cos(e),y2=cy+r*Math.sin(e);
-    return `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${sa>180?1:0} 1 ${x2},${y2} Z`; };
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>
-        Vybarvi <strong style={{color:c.primary}}>{numerator}/{denominator}</strong> ciferníku.
-      </p>
-      <svg width={260} height={260} viewBox="0 0 260 260">
-        <circle cx={cx} cy={cy} r={118} fill="white" stroke="#DDD" strokeWidth={1.5}/>
-        {Array.from({length:denominator}).map((_,i)=>(
-          <path key={i} d={path(i)} fill={sel.includes(i)?c.secondary:c.soft}
-            stroke="white" strokeWidth={2} style={{cursor:"pointer",transition:"fill 0.18s"}}
-            onClick={()=>toggle(i)}/>
-        ))}
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke={c.primary} strokeWidth={3}/>
-        {Array.from({length:12}).map((_,i)=>{
-          const a=(i*30-90)*Math.PI/180,r1=100,r2=i%3===0?110:104;
-          return (
-            <g key={i}>
-              <line x1={cx+r1*Math.cos(a)} y1={cy+r1*Math.sin(a)}
-                    x2={cx+r2*Math.cos(a)} y2={cy+r2*Math.sin(a)}
-                    stroke={c.muted} strokeWidth={i%3===0?2.5:1.5}/>
-              {i%3===0 && <text x={cx+118*Math.cos(a)} y={cy+118*Math.sin(a)+4}
-                textAnchor="middle" fontSize={11} fill={c.muted} fontFamily="inherit">
-                {i===0?12:i}
-              </text>}
-            </g>
-          );
-        })}
-        <circle cx={cx} cy={cy} r={8} fill={c.primary}/>
-      </svg>
-      <div style={{color:c.muted,fontSize:14}}>Vybráno: <strong>{sel.length}</strong> z {denominator}</div>
-      <Btn c={c} disabled={done||sel.length===0} onClick={submit}>Zkontrolovat ✓</Btn>
-    </div>
-  );
-}
-
-// ─── ENV 8: Skupinka objektů (diskrétní model) ────────────────────────────────
-// Klíčový pro Hejného – dítě vybírá z konkrétních předmětů, ne z plochy
-const SKUPINKA_ICONS = ["🍎","🍋","🐟","⭐","🌸","🎈","🦋","🍄","🐠","🌻"];
-function SkupinkaEnv({ question, onAnswer, c }) {
-  const { numerator, denominator, icon } = question;
-  const [sel, setSel] = useState(new Set());
-  const [done, setDone] = useState(false);
-  useEffect(()=>{ setSel(new Set()); setDone(false); }, [question]);
-  const toggle = i=>{ if(done) return; setSel(p=>{ const n=new Set(p); n.has(i)?n.delete(i):n.add(i); return n; }); };
-  const submit = ()=>{ if(done) return; setDone(true); onAnswer(sel.size===numerator); };
-  // lay out in rows of up to 5
-  const cols = Math.min(denominator, 5);
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>
-        Vyber <strong style={{color:c.primary}}>{numerator}/{denominator}</strong> z těchto předmětů.
-      </p>
-      <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},52px)`,gap:8}}>
-        {Array.from({length:denominator}).map((_,i)=>(
-          <button key={i} onClick={()=>toggle(i)} style={{
-            width:52,height:52,borderRadius:12,fontSize:26,
-            background:sel.has(i)?c.secondary:c.soft,
-            border:`2.5px solid ${sel.has(i)?c.primary:c.secondary}`,
-            cursor:"pointer",transition:"all 0.15s",
-            transform:sel.has(i)?"scale(1.12)":"scale(1)",
-            boxShadow:sel.has(i)?`0 3px 10px ${c.soft}`:"none",
-          }}>{icon}</button>
-        ))}
-      </div>
-      <div style={{color:c.muted,fontSize:14}}>Vybráno: <strong>{sel.size}</strong> z {denominator}</div>
-      <Btn c={c} disabled={done||sel.size===0} onClick={submit}>Zkontrolovat ✓</Btn>
-    </div>
-  );
-}
-
-// ─── ENV 9: Sklenice ──────────────────────────────────────────────────────────
-function SkleniceEnv({ question, onAnswer, c }) {
-  const { numerator, denominator } = question;
-  // drag to fill – continuous like number line
-  const [fillLevel, setFillLevel] = useState(0); // 0..1
-  const [placed, setPlaced] = useState(false);
-  const [done, setDone] = useState(false);
-  const [result, setResult] = useState(null);
-  const svgRef = useRef(null);
-  const drag = useRef(false);
-
-  useEffect(()=>{ setFillLevel(0); setPlaced(false); setDone(false); setResult(null); drag.current=false; }, [question]);
-
-  const W=160, H=220, BOTT=30, TOP=20, innerH=H-BOTT-TOP;
-  const correctFill = numerator/denominator;
-  const tolerance = 0.5/denominator;
-
-  const svgYToFill = y => Math.max(0,Math.min(1,(H-BOTT-y)/innerH));
-  const fillToSvgY = f => H-BOTT-f*innerH;
-
-  const getClientY = e => e.touches?e.touches[0].clientY:e.clientY;
-
-  const onMove = useCallback(e=>{
-    if(!drag.current||!svgRef.current) return;
-    const r=svgRef.current.getBoundingClientRect();
-    const y=(getClientY(e)-r.top)*(H/r.height);
-    setFillLevel(svgYToFill(y)); setPlaced(true);
-  },[]);
-  const endDrag = useCallback(()=>{ drag.current=false; },[]);
-  useEffect(()=>{
-    window.addEventListener("mousemove",onMove);
-    window.addEventListener("mouseup",endDrag);
-    window.addEventListener("touchmove",onMove,{passive:false});
-    window.addEventListener("touchend",endDrag);
-    return ()=>{
-      window.removeEventListener("mousemove",onMove);
-      window.removeEventListener("mouseup",endDrag);
-      window.removeEventListener("touchmove",onMove);
-      window.removeEventListener("touchend",endDrag);
-    };
-  },[onMove,endDrag]);
-
-  const ok = Math.abs(fillLevel-correctFill)<=tolerance;
-  const submit = ()=>{ if(done||!placed) return; setDone(true); setResult(ok); setTimeout(()=>onAnswer(ok),900); };
-
-  const waterY = fillToSvgY(fillLevel);
-  const correctY = fillToSvgY(correctFill);
-  // tick marks on the side
-  const ticks = Array.from({length:denominator+1},(_,i)=>({i, y:fillToSvgY(i/denominator), label:i===0?"0":i===denominator?"1":`${i}/${denominator}`}));
-
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>
-        Naplň sklenici na <strong style={{color:c.primary}}>{numerator}/{denominator}</strong>.
-      </p>
-      <div style={{display:"flex",gap:16,alignItems:"center"}}>
-        <svg ref={svgRef} width={W} height={H} viewBox={`0 0 ${W} ${H}`}
-          style={{overflow:"visible",touchAction:"none",cursor:done?"default":"ns-resize"}}
-          onClick={e=>{
-            if(done||drag.current) return;
-            const r=svgRef.current.getBoundingClientRect();
-            const y=(e.clientY-r.top)*(H/r.height);
-            setFillLevel(svgYToFill(y)); setPlaced(true);
-          }}>
-          {/* Glass outline */}
-          <path d={`M30,${TOP} L20,${H-BOTT} Q${W/2},${H-5} ${W-20},${H-BOTT} L${W-30},${TOP} Z`}
-            fill="none" stroke={c.primary} strokeWidth={3} strokeLinejoin="round"/>
-          {/* Water fill */}
-          <clipPath id="glassClip">
-            <path d={`M30,${TOP} L20,${H-BOTT} Q${W/2},${H-5} ${W-20},${H-BOTT} L${W-30},${TOP} Z`}/>
-          </clipPath>
-          <rect x={0} y={waterY} width={W} height={H} clipPath="url(#glassClip)"
-            fill={result===null?c.secondary:result?CORRECT_COLOR:WRONG_COLOR}
-            style={{transition:drag.current?"none":"fill 0.3s"}} opacity={0.7}/>
-          {/* Correct level after answer */}
-          {result!==null && (
-            <line x1={15} y1={correctY} x2={W-15} y2={correctY}
-              stroke={CORRECT_COLOR} strokeWidth={2.5} strokeDasharray="5,3"/>
-          )}
-          {/* Drag handle */}
-          {!done && (
-            <g style={{cursor:"ns-resize"}}
-               onMouseDown={e=>{drag.current=true;e.preventDefault();}}
-               onTouchStart={e=>{drag.current=true;e.preventDefault();}}>
-              <line x1={25} y1={waterY} x2={W-25} y2={waterY} stroke={c.primary} strokeWidth={3}/>
-              <circle cx={W/2} cy={waterY} r={10} fill={placed?c.primary:"#CCC"} stroke="white" strokeWidth={2}/>
-            </g>
-          )}
-          {/* Bubble label */}
-          {placed && !done && (
-            <g>
-              <rect x={W/2-22} y={waterY-36} width={44} height={22} rx={6} fill={c.primary}/>
-              <polygon points={`${W/2-5},${waterY-14} ${W/2+5},${waterY-14} ${W/2},${waterY-8}`} fill={c.primary}/>
-              <text x={W/2} y={waterY-21} textAnchor="middle" fontSize={11} fill="white" fontFamily="inherit" fontWeight="bold">
-                {Math.round(fillLevel*denominator)}/{denominator}
-              </text>
-            </g>
-          )}
-        </svg>
-        {/* Scale on the right */}
-        <div style={{display:"flex",flexDirection:"column",justifyContent:"space-between",height:H-BOTT-TOP,paddingTop:TOP}}>
-          {ticks.filter(t=>t.i===0||t.i===denominator).map(t=>(
-            <div key={t.i} style={{fontSize:12,color:c.muted,fontWeight:700,lineHeight:1}}>{t.label}</div>
-          ))}
-        </div>
-      </div>
-      <div style={{fontSize:12,color:c.muted}}>Táhni nebo klikni na sklenici</div>
-      <Btn c={c} disabled={done||!placed} onClick={submit}>Zkontrolovat ✓</Btn>
-    </div>
-  );
-}
-
-// ─── ENV 10: Teploměr ─────────────────────────────────────────────────────────
-function TeplotaEnv({ question, onAnswer, c }) {
-  const { numerator, denominator } = question;
-  const [fillLevel, setFillLevel] = useState(0);
-  const [placed, setPlaced] = useState(false);
-  const [done, setDone] = useState(false);
-  const [result, setResult] = useState(null);
-  const svgRef = useRef(null);
-  const drag = useRef(false);
-
-  useEffect(()=>{ setFillLevel(0); setPlaced(false); setDone(false); setResult(null); drag.current=false; }, [question]);
-
-  const W=80, H=260, BULB=24, TPAD=20, trackH=H-BULB*2-TPAD;
-  const correctFill = numerator/denominator;
-  const tolerance = 0.5/denominator;
-
-  const svgYToFill = y => Math.max(0,Math.min(1,(H-BULB-y)/trackH));
-  const fillToSvgY = f => H-BULB-f*trackH;
-
-  const getClientY = e => e.touches?e.touches[0].clientY:e.clientY;
-  const onMove = useCallback(e=>{
-    if(!drag.current||!svgRef.current) return;
-    const r=svgRef.current.getBoundingClientRect();
-    setFillLevel(svgYToFill((getClientY(e)-r.top)*(H/r.height)));
-    setPlaced(true);
-  },[]);
-  const endDrag = useCallback(()=>{ drag.current=false; },[]);
-  useEffect(()=>{
-    window.addEventListener("mousemove",onMove); window.addEventListener("mouseup",endDrag);
-    window.addEventListener("touchmove",onMove,{passive:false}); window.addEventListener("touchend",endDrag);
-    return ()=>{ window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",endDrag);
-      window.removeEventListener("touchmove",onMove); window.removeEventListener("touchend",endDrag); };
-  },[onMove,endDrag]);
-
-  const ok = Math.abs(fillLevel-correctFill)<=tolerance;
-  const submit = ()=>{ if(done||!placed) return; setDone(true); setResult(ok); setTimeout(()=>onAnswer(ok),900); };
-
-  const CX=W/2, TW=18;
-  const merY = fillToSvgY(fillLevel);
-  const correctY = fillToSvgY(correctFill);
-  const merColor = result===null?c.secondary:result?CORRECT_COLOR:WRONG_COLOR;
-
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>
-        Nastav teploměr na <strong style={{color:c.primary}}>{numerator}/{denominator}</strong>.
-      </p>
-      <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-        <svg ref={svgRef} width={W} height={H} viewBox={`0 0 ${W} ${H}`}
-          style={{overflow:"visible",touchAction:"none",cursor:done?"default":"ns-resize"}}
-          onClick={e=>{
-            if(done||drag.current) return;
-            const r=svgRef.current.getBoundingClientRect();
-            setFillLevel(svgYToFill((e.clientY-r.top)*(H/r.height))); setPlaced(true);
-          }}>
-          {/* Track background */}
-          <rect x={CX-TW/2} y={TPAD} width={TW} height={trackH+BULB} rx={TW/2} fill={c.soft}/>
-          {/* Mercury fill */}
-          <clipPath id="thermClip"><rect x={CX-TW/2} y={TPAD} width={TW} height={trackH+BULB} rx={TW/2}/></clipPath>
-          <rect x={CX-TW/2} y={merY} width={TW} height={H} clipPath="url(#thermClip)"
-            fill={merColor} style={{transition:drag.current?"none":"fill 0.3s"}}/>
-          {/* Bulb */}
-          <circle cx={CX} cy={H-BULB} r={BULB} fill={merColor} style={{transition:"fill 0.3s"}}/>
-          <circle cx={CX} cy={H-BULB} r={BULB} fill="none" stroke={c.primary} strokeWidth={2.5}/>
-          {/* Track outline */}
-          <rect x={CX-TW/2} y={TPAD} width={TW} height={trackH} rx={TW/2} fill="none" stroke={c.primary} strokeWidth={2.5}/>
-          {/* Tick marks */}
-          {Array.from({length:denominator+1}).map((_,i)=>{
-            const y=fillToSvgY(i/denominator), isEnd=i===0||i===denominator;
-            return (
-              <g key={i}>
-                <line x1={CX+TW/2} y1={y} x2={CX+TW/2+( isEnd?10:6)} y2={y}
-                  stroke={isEnd?c.primary:c.muted} strokeWidth={isEnd?2:1.5}/>
-                {isEnd && <text x={CX+TW/2+14} y={y+4} fontSize={12} fontWeight="bold" fill={c.primary} fontFamily="inherit">
-                  {i===0?"0":"1"}
-                </text>}
-              </g>
-            );
-          })}
-          {/* Correct marker */}
-          {result!==null && <line x1={CX-TW/2-4} y1={correctY} x2={CX+TW/2+4} y2={correctY}
-            stroke={CORRECT_COLOR} strokeWidth={2.5} strokeDasharray="4,2"/>}
-          {/* Drag handle */}
-          {!done && <circle cx={CX} cy={merY} r={10} fill={placed?c.primary:"#CCC"} stroke="white" strokeWidth={2.5}
-            style={{cursor:"ns-resize"}}
-            onMouseDown={e=>{drag.current=true;e.preventDefault();}}
-            onTouchStart={e=>{drag.current=true;e.preventDefault();}}/>}
-        </svg>
-        {/* Fraction label */}
-        <div style={{paddingTop:TPAD,fontSize:13,color:c.muted,width:60}}>
-          {placed&&!done&&<div style={{background:c.primary,color:"white",borderRadius:8,padding:"3px 7px",fontSize:12,fontWeight:700,textAlign:"center"}}>
-            {Math.round(fillLevel*denominator)}/{denominator}
-          </div>}
-        </div>
-      </div>
-      <div style={{fontSize:12,color:c.muted}}>Táhni rtuť nebo klikni na teploměr</div>
-      <Btn c={c} disabled={done||!placed} onClick={submit}>Zkontrolovat ✓</Btn>
-    </div>
-  );
-}
-
-// ─── ENV 11: Recept ───────────────────────────────────────────────────────────
-const RECIPE_ITEMS = [
-  { label:"mouky",   emoji:"🌾", unitGen:"hrnků",   unitSg:"hrnek"  },
-  { label:"cukru",   emoji:"🍬", unitGen:"lžic",    unitSg:"lžíce"  },
-  { label:"másla",   emoji:"🧈", unitGen:"kostek",  unitSg:"kostka" },
-  { label:"vajec",   emoji:"🥚", unitGen:"kusů",    unitSg:"kus"    },
-  { label:"mléka",   emoji:"🥛", unitGen:"dcl",     unitSg:"dcl"    },
-  { label:"kakaa",   emoji:"🍫", unitGen:"lžiček",  unitSg:"lžička" },
-];
-function ReceptEnv({ question, onAnswer, c }) {
-  const { numerator, denominator, ingredient, totalScoops } = question;
-  // totalScoops = denominator – how many spoon-clicks make the full amount
-  // child must click exactly numerator scoops
-  const [sel, setSel] = useState(0);
-  const [done, setDone] = useState(false);
-  useEffect(()=>{ setSel(0); setDone(false); }, [question]);
-  const add = ()=>{ if(done||sel>=denominator) return; setSel(s=>s+1); };
-  const remove = ()=>{ if(done||sel<=0) return; setSel(s=>s-1); };
-  const submit = ()=>{ if(done) return; setDone(true); onAnswer(sel===numerator); };
-
-  const pct = sel / denominator;
-  const W = 220, H = 160;
-  // Bowl geometry
-  const bL = 18, bR = W - 18, bTop = 18, bBot = H - 18;
-  const bW = bR - bL, bH = bBot - bTop;
-  // Bowl shape as path: flat rim at top, rounded bottom
-  const bowlPath = `M${bL},${bTop} L${bR},${bTop} Q${bR+8},${bTop+bH*0.4} ${(bL+bR)/2},${bBot} Q${bL-8},${bTop+bH*0.4} ${bL},${bTop} Z`;
-  // Fill rises from bottom: fillY is top of the fill rect
-  const fillY = bTop + bH * (1 - pct);
-
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>
-        Odměř <strong style={{color:c.primary}}>{numerator}/{denominator}</strong> {ingredient.unitGen} {ingredient.label} {ingredient.emoji} do mísy.
-      </p>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
-        <defs>
-          <clipPath id="bowlClip2">
-            <path d={bowlPath}/>
-          </clipPath>
-        </defs>
-        {/* Bowl background */}
-        <path d={bowlPath} fill={c.soft}/>
-        {/* Fill – rect from fillY to bottom, clipped to bowl shape */}
-        <rect x={0} y={fillY} width={W} height={H - fillY}
-          fill={c.secondary} clipPath="url(#bowlClip2)"
-          style={{transition:"y 0.25s, height 0.25s"}}/>
-        {/* Bowl outline on top */}
-        <path d={bowlPath} fill="none" stroke={c.primary} strokeWidth={3} strokeLinejoin="round"/>
-        {/* Ingredient emoji centered, always visible */}
-        <text x={W/2} y={bTop + bH*0.52 + 8} textAnchor="middle" fontSize={26}
-          fontFamily="inherit" style={{pointerEvents:"none"}}>{ingredient.emoji}</text>
-        {/* Counter */}
-        <text x={W/2} y={bTop + bH*0.82} textAnchor="middle" fontSize={14}
-          fontWeight="bold" fill={pct > 0.6 ? "white" : c.primary} fontFamily="inherit">
-          {sel}/{denominator}
-        </text>
-      </svg>
-      {/* Stepper */}
-      <div style={{display:"flex",gap:16,alignItems:"center"}}>
-        <button onClick={remove} disabled={done||sel<=0} style={{
-          width:44,height:44,borderRadius:"50%",fontSize:22,fontWeight:"bold",
-          background:sel>0?c.secondary:c.soft, color:DARK, border:`2px solid ${c.primary}`,
-          cursor:sel>0&&!done?"pointer":"not-allowed",fontFamily:"inherit"}}>−</button>
-        <div style={{fontSize:28,minWidth:60,textAlign:"center",fontWeight:800,color:c.primary}}>
-          {Array.from({length:denominator}).map((_,i)=>(
-            <span key={i} style={{fontSize:20,opacity:i<sel?1:0.25}}>{ingredient.emoji}</span>
-          ))}
-        </div>
-        <button onClick={add} disabled={done||sel>=denominator} style={{
-          width:44,height:44,borderRadius:"50%",fontSize:22,fontWeight:"bold",
-          background:sel<denominator?c.secondary:c.soft, color:DARK, border:`2px solid ${c.primary}`,
-          cursor:sel<denominator&&!done?"pointer":"not-allowed",fontFamily:"inherit"}}>+</button>
-      </div>
-      <Btn c={c} disabled={done||sel===0} onClick={submit}>Zkontrolovat ✓</Btn>
-    </div>
-  );
-}
-
-// ─── ENV 12: Schodiště ───────────────────────────────────────────────────────
-function SchodisteEnv({ question, onAnswer, c }) {
-  const { numerator, denominator } = question;
-  const [sel, setSel] = useState(new Set());
-  const [done, setDone] = useState(false);
-  useEffect(()=>{ setSel(new Set()); setDone(false); }, [question]);
-
-  const toggle = i => {
-    if (done) return;
-    setSel(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
-  };
-  const submit = () => { if (done) return; setDone(true); onAnswer(sel.size === numerator); };
-
-  // Staircase geometry – each step i (0=bottom, denominator-1=top)
-  // step i has x = i * stepW, y = totalH - (i+1)*stepH, width = stepW*(denominator-i), height = stepH
-  const SVG_W = 280, SVG_H = 200;
-  const STEPS = denominator;
-  const stepH = Math.min(36, Math.floor((SVG_H - 20) / STEPS));
-  const stepW = Math.min(40, Math.floor((SVG_W - 20) / STEPS));
-  const baseX = 10;
-  const baseY = SVG_H - 10;
-
-  // step 0 = bottom (1st step), step STEPS-1 = top
-  const stepRect = i => ({
-    x: baseX + i * stepW,
-    y: baseY - (i + 1) * stepH,
-    w: (STEPS - i) * stepW,
-    h: stepH,
-  });
-
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
-      <p style={{fontSize:18,color:c.muted,textAlign:"center",margin:0}}>
-        Označ <strong style={{color:c.primary}}>{numerator}/{denominator}</strong> schodů schodiště.
-      </p>
-      <svg width={SVG_W} height={SVG_H} viewBox={`0 0 ${SVG_W} ${SVG_H}`} style={{cursor:"pointer"}}>
-        {/* Ground line */}
-        <line x1={baseX} y1={baseY} x2={baseX + STEPS*stepW + 10} y2={baseY}
-          stroke={c.muted} strokeWidth={2}/>
-        {Array.from({length:STEPS}).map((_,i)=>{
-          const {x,y,w,h} = stepRect(i);
-          const on = sel.has(i);
-          return (
-            <g key={i} onClick={()=>toggle(i)} style={{cursor:"pointer"}}>
-              {/* Step tread (horizontal face) */}
-              <rect x={x} y={y} width={w} height={h}
-                fill={on ? c.secondary : c.soft}
-                stroke={c.primary} strokeWidth={1.5}
-                style={{transition:"fill 0.15s"}}/>
-              {/* Step number */}
-              <text x={x + w/2} y={y + h/2 + 5} textAnchor="middle"
-                fontSize={Math.min(12, h*0.55)} fill={on ? DARK : c.muted}
-                fontFamily="inherit" fontWeight="bold" style={{pointerEvents:"none"}}>
-                {i+1}
-              </text>
-            </g>
-          );
-        })}
-        {/* Little frog on top of highest selected step */}
-        {sel.size > 0 && (() => {
-          const topStep = Math.max(...sel);
-          const {x, y, w} = stepRect(topStep);
-          const px = x + w - 18, py = y - 2;
-          return (
-            <g style={{pointerEvents:"none"}}>
-              {/* Body */}
-              <ellipse cx={px} cy={py-10} rx={10} ry={9} fill="#2ECC71"/>
-              {/* Eyes */}
-              <circle cx={px-4} cy={py-17} r={5} fill="#2ECC71"/>
-              <circle cx={px+4} cy={py-17} r={5} fill="#2ECC71"/>
-              <circle cx={px-4} cy={py-17} r={3} fill="white"/>
-              <circle cx={px+4} cy={py-17} r={3} fill="white"/>
-              <circle cx={px-3} cy={py-17} r={1.5} fill={DARK}/>
-              <circle cx={px+5} cy={py-17} r={1.5} fill={DARK}/>
-              {/* Mouth */}
-              <path d={`M${px-3},${py-11} Q${px},${py-8} ${px+3},${py-11}`}
-                fill="none" stroke={DARK} strokeWidth={1.2} strokeLinecap="round"/>
-              {/* Front legs */}
-              <path d={`M${px-8},${py-8} Q${px-14},${py-4} ${px-12},${py}`}
-                fill="none" stroke="#27AE60" strokeWidth={2.5} strokeLinecap="round"/>
-              <path d={`M${px+8},${py-8} Q${px+14},${py-4} ${px+12},${py}`}
-                fill="none" stroke="#27AE60" strokeWidth={2.5} strokeLinecap="round"/>
-              {/* Belly spot */}
-              <ellipse cx={px} cy={py-9} rx={5} ry={5} fill="#A9F5C8" opacity={0.7}/>
-            </g>
-          );
-        })()}
-      </svg>
-      <div style={{color:c.muted,fontSize:14}}>
-        Označeno: <strong>{sel.size}</strong> z {denominator} schodů
-      </div>
-      <Btn c={c} disabled={done||sel.size===0} onClick={submit}>Zkontrolovat ✓</Btn>
-    </div>
-  );
-}
-
-// ─── Question pool generators – každé prostředí generuje 100+ unikátních otázek ─
+// ─── Utility ──────────────────────────────────────────────────────────────────
 const DENOMS=[2,3,4,5,6,8,10];
-const rN=d=>Math.floor(Math.random()*(d-1))+1;
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function gcd(a,b){return b===0?a:gcd(b,a%b);}
+function simplify(n,d){const g=gcd(Math.abs(n),d);return{n:n/g,d:d/g};}
 
-// Shuffle array in place (Fisher-Yates)
-const shuffle = arr => { for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];} return arr; };
+// ─── Pool generátory ──────────────────────────────────────────────────────────
+function poolSimple(){const p=[];for(const d of DENOMS)for(let n=1;n<d;n++)p.push({numerator:n,denominator:d});while(p.length<60)p.push({...p[Math.floor(Math.random()*p.length)]});return shuffle(p);}
+function poolCompare(){const p=[];for(const d1 of DENOMS)for(let n1=1;n1<d1;n1++)for(const d2 of DENOMS)for(let n2=1;n2<d2;n2++)if(!(n1===n2&&d1===d2))p.push({fractionA:[n1,d1],fractionB:[n2,d2]});return shuffle(p).slice(0,80);}
+function poolGrid(){const c=[[2,2],[2,3],[2,4],[3,3],[2,5],[3,4],[4,4]],p=[];for(const[rows,cols]of c){const t=rows*cols;for(let n=1;n<t;n++)p.push({rows,cols,numerator:n,denominator:t});}while(p.length<60)p.push({...p[Math.floor(Math.random()*p.length)]});return shuffle(p);}
+function poolApartmany(){const c=[[2,2],[2,3],[3,2],[2,4],[4,2],[3,3]],p=[];for(const[f,fp]of c){const t=f*fp;for(let n=1;n<t;n++)p.push({floors:f,flatsPerFloor:fp,numerator:n,denominator:t});}while(p.length<60)p.push({...p[Math.floor(Math.random()*p.length)]});return shuffle(p);}
+function poolHodiny(){const p=[];for(const d of[2,3,4,6,12])for(let n=1;n<d;n++)p.push({numerator:n,denominator:d});while(p.length<60)p.push({...p[Math.floor(Math.random()*p.length)]});return shuffle(p);}
+const ICONS=["🍎","🍋","🐟","⭐","🌸","🎈","🦋","🍄","🐠","🌻"];
+function poolSkupinka(){const p=[];for(const d of[3,4,5,6,8,10])for(let n=1;n<d;n++)for(const icon of ICONS)p.push({numerator:n,denominator:d,icon});return shuffle(p).slice(0,100);}
+function poolSchodiste(){const p=[];for(const d of[4,5,6,7,8,10])for(let n=1;n<d;n++)p.push({numerator:n,denominator:d});while(p.length<60)p.push({...p[Math.floor(Math.random()*p.length)]});return shuffle(p);}
+const RECIPE_ITEMS=[{label:"mouky",emoji:"🌾",unitGen:"hrnků"},{label:"cukru",emoji:"🍬",unitGen:"lžic"},{label:"másla",emoji:"🧈",unitGen:"kostek"},{label:"vajec",emoji:"🥚",unitGen:"kusů"},{label:"mléka",emoji:"🥛",unitGen:"dcl"},{label:"kakaa",emoji:"🍫",unitGen:"lžiček"}];
+function poolRecept(){const p=[];for(const d of[2,3,4,5,6])for(let n=1;n<d;n++)for(const ing of RECIPE_ITEMS)p.push({numerator:n,denominator:d,ingredient:ing});while(p.length<60)p.push({...p[Math.floor(Math.random()*p.length)]});return shuffle(p);}
 
-function poolSimple() {
-  const pool = [];
-  for(const d of DENOMS) for(let n=1;n<d;n++) pool.push({numerator:n,denominator:d});
-  // pad to 100+ by duplicating with shuffle
-  while(pool.length < 100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
-  return shuffle(pool);
-}
-
-function poolCompare() {
-  const pool = [];
-  for(const d1 of DENOMS) for(let n1=1;n1<d1;n1++)
-    for(const d2 of DENOMS) for(let n2=1;n2<d2;n2++)
-      if(!(n1===n2&&d1===d2)) pool.push({fractionA:[n1,d1],fractionB:[n2,d2]});
-  return shuffle(pool).slice(0,150);
-}
-
-function poolGrid() {
-  const cfgs=[[2,2],[2,3],[2,4],[3,3],[2,5],[3,4],[4,4],[2,6],[3,5]];
-  const pool=[];
-  for(const [rows,cols] of cfgs){ const t=rows*cols; for(let n=1;n<t;n++) pool.push({rows,cols,numerator:n,denominator:t}); }
-  while(pool.length<100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
-  return shuffle(pool);
-}
-
-function poolApartmany() {
-  const cfgs=[[2,2],[2,3],[3,2],[2,4],[4,2],[3,3],[2,5],[5,2]];
-  const pool=[];
-  for(const [floors,flatsPerFloor] of cfgs){ const t=floors*flatsPerFloor; for(let n=1;n<t;n++) pool.push({floors,flatsPerFloor,numerator:n,denominator:t}); }
-  while(pool.length<100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
-  return shuffle(pool);
-}
-
-function poolHodiny() {
-  const ds=[2,3,4,6,12];
-  const pool=[];
-  for(const d of ds) for(let n=1;n<d;n++) pool.push({numerator:n,denominator:d});
-  while(pool.length<100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
-  return shuffle(pool);
-}
-
-function poolSkupinka() {
-  const ds=[3,4,5,6,8,10];
-  const pool=[];
-  for(const d of ds) for(let n=1;n<d;n++)
-    for(const icon of SKUPINKA_ICONS) pool.push({numerator:n,denominator:d,icon});
-  return shuffle(pool).slice(0,150);
-}
-
-function poolRecept() {
-  const ds=[2,3,4,5,6];
-  const pool=[];
-  for(const d of ds) for(let n=1;n<d;n++)
-    for(const ing of RECIPE_ITEMS) pool.push({numerator:n,denominator:d,ingredient:ing});
-  while(pool.length<100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
-  return shuffle(pool);
-}
-
-function poolSchodiste() {
-  const ds=[4,5,6,7,8,10];
-  const pool=[];
-  for(const d of ds) for(let n=1;n<d;n++) pool.push({numerator:n,denominator:d});
-  while(pool.length<100) pool.push({...pool[Math.floor(Math.random()*pool.length)]});
-  return shuffle(pool);
-}
-
+// ─── Prostředí ────────────────────────────────────────────────────────────────
 const ENVS=[
-  { name:"🍕 Koláč",         desc:"Rozkrájej koláč a sněz správný kousek!",   comp:PizzaEnv,      genPool: poolSimple },
-  { name:"📏 Číselná osa",   desc:"Přesuň kolečko na správné místo na ose.",   comp:NumberLineEnv, genPool: poolSimple },
-  { name:"⚖️ Porovnávání",   desc:"Který kelímek je plnější? Dej znaménko!",  comp:CompareEnv,    genPool: poolCompare },
-  { name:"🟧 Čtvercová síť", desc:"Vybarvi správný počet políček v tabulce.",  comp:GridEnv,       genPool: poolGrid },
-  { name:"📐 Pásek",         desc:"Vybarvi správnou část barevného pásku.",    comp:PasekEnv,      genPool: poolSimple },
-  { name:"🏠 Apartmány",     desc:"Rozsviť světla ve správném počtu bytů!",   comp:ApartmanyEnv,  genPool: poolApartmany },
-  { name:"🕐 Hodiny",        desc:"Vybarvi správnou výseč ciferníku hodin.",  comp:HodinyEnv,     genPool: poolHodiny },
-  { name:"🐠 Skupinka",      desc:"Vyber správný počet předmětů ze skupiny.",  comp:SkupinkaEnv,   genPool: poolSkupinka },
-  { name:"🫙 Sklenice",      desc:"Nalij do sklenice přesně tolik, kolik má!",comp:SkleniceEnv,   genPool: poolSimple },
-  { name:"🌡️ Teploměr",     desc:"Nastav rtuť na správnou teplotu na škále.",comp:TeplotaEnv,    genPool: poolSimple },
-  { name:"🍳 Recept",        desc:"Odměř správné množství přísad do mísy.",   comp:ReceptEnv,     genPool: poolRecept },
-  { name:"🪜 Schodiště",     desc:"Vylez po schodech přesně tak vysoko!",     comp:SchodisteEnv,  genPool: poolSchodiste },
+  {name:"🍕 Koláč",     desc:"Rozkrájej koláč a sněz správný kousek!",   pool:poolSimple,    type:"pizza"},
+  {name:"📏 Číselná osa",desc:"Přesuň kolečko na správné místo na ose.",  pool:poolSimple,    type:"line"},
+  {name:"⚖️ Porovnávání",desc:"Který kelímek je plnější? Dej znaménko!",  pool:poolCompare,   type:"compare"},
+  {name:"🟧 Čtvercová síť",desc:"Vybarvi správný počet políček.",          pool:poolGrid,      type:"grid"},
+  {name:"📐 Pásek",      desc:"Vybarvi správnou část barevného pásku.",    pool:poolSimple,    type:"strip"},
+  {name:"🏠 Apartmány",  desc:"Rozsviť světla ve správném počtu bytů!",   pool:poolApartmany, type:"apart"},
+  {name:"🕐 Hodiny",     desc:"Vybarvi správnou výseč ciferníku hodin.",   pool:poolHodiny,    type:"clock"},
+  {name:"🐠 Skupinka",   desc:"Vyber správný počet předmětů ze skupiny.",  pool:poolSkupinka,  type:"group"},
+  {name:"🫙 Sklenice",   desc:"Nalij do sklenice přesně tolik, kolik má!", pool:poolSimple,    type:"jar"},
+  {name:"🌡️ Teploměr",  desc:"Nastav rtuť na správnou teplotu na škále.", pool:poolSimple,    type:"thermo"},
+  {name:"🍳 Recept",     desc:"Odměř správné množství přísad do mísy.",    pool:poolRecept,    type:"recipe"},
+  {name:"🪜 Schodiště",  desc:"Vylez po schodech přesně tak vysoko!",      pool:poolSchodiste, type:"stairs"},
 ];
 
-// ─── Confetti ─────────────────────────────────────────────────────────────────
-function Confetti({ active }) {
-  const canvasRef=useRef(null);
-  const animRef=useRef(null);
-  useEffect(()=>{
-    if(!active) return;
-    const canvas=canvasRef.current; if(!canvas) return;
-    const ctx=canvas.getContext("2d");
-    canvas.width=window.innerWidth; canvas.height=window.innerHeight;
-    const CC=["#FF5733","#00C9F0","#CC66FF","#2DDD99","#FFCC00","#00E5CC","#FF2D8A","#9C55FF","#3390FF","#FF7777","#FF9933"];
-    const SH=["rect","circle","tri"];
-    const ps=Array.from({length:150},()=>({
-      x:Math.random()*canvas.width, y:-20-Math.random()*200,
-      vx:(Math.random()-.5)*3, vy:2+Math.random()*4,
-      rot:Math.random()*Math.PI*2, rv:(Math.random()-.5)*.18,
-      sz:7+Math.random()*10, color:CC[Math.floor(Math.random()*CC.length)],
-      shape:SH[Math.floor(Math.random()*SH.length)], op:1
-    }));
-    let frame=0;
-    const draw=()=>{
-      ctx.clearRect(0,0,canvas.width,canvas.height); frame++;
-      let alive=false;
-      for(const p of ps){
-        if(p.y>canvas.height+20) continue; alive=true;
-        p.x+=p.vx; p.y+=p.vy; p.vy+=.06; p.rot+=p.rv;
-        if(frame>90) p.op=Math.max(0,p.op-.013);
-        ctx.save(); ctx.globalAlpha=p.op; ctx.translate(p.x,p.y); ctx.rotate(p.rot);
-        ctx.fillStyle=p.color;
-        if(p.shape==="rect") ctx.fillRect(-p.sz/2,-p.sz/4,p.sz,p.sz/2);
-        else if(p.shape==="circle"){ ctx.beginPath(); ctx.arc(0,0,p.sz/2.5,0,Math.PI*2); ctx.fill(); }
-        else { ctx.beginPath(); ctx.moveTo(0,-p.sz/2); ctx.lineTo(p.sz/2,p.sz/2); ctx.lineTo(-p.sz/2,p.sz/2); ctx.closePath(); ctx.fill(); }
-        ctx.restore();
-      }
-      if(alive) animRef.current=requestAnimationFrame(draw);
-    };
-    animRef.current=requestAnimationFrame(draw);
-    return ()=>{ if(animRef.current) cancelAnimationFrame(animRef.current); };
-  },[active]);
-  if(!active) return null;
-  return <canvas ref={canvasRef} style={{position:"fixed",top:0,left:0,width:"100vw",height:"100vh",pointerEvents:"none",zIndex:999}}/>;
+// ─── SVG helpers ──────────────────────────────────────────────────────────────
+function sectorPath(i,d,cx,cy,r){
+  const sa=360/d,s=(i*sa-90)*Math.PI/180,e=((i+1)*sa-90)*Math.PI/180;
+  const x1=cx+r*Math.cos(s),y1=cy+r*Math.sin(s),x2=cx+r*Math.cos(e),y2=cy+r*Math.sin(e);
+  return `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${sa>180?1:0} 1 ${x2},${y2} Z`;
 }
 
-// ─── Zoo display (header collection) ─────────────────────────────────────────
-function ZooBar({ collection }) {
-  if(!collection.length) return null;
-  const groups={};
-  for(const r of collection){ if(!groups[r.emoji]) groups[r.emoji]={...r,count:0}; groups[r.emoji].count+=r.count; }
-  return (
-    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",justifyContent:"center",
-      padding:"7px 14px",background:"white",borderRadius:30,border:"1.5px solid #E2EBF0",
-      boxShadow:"0 2px 8px rgba(0,0,0,0.06)",marginTop:6}}>
-      <span style={{fontSize:12,color:"#6B7280",marginRight:2}}>Moje zoo:</span>
-      {Object.values(groups).map(g=>(
-        <span key={g.emoji} style={{fontSize:13,fontWeight:700,color:g.color}}>
-          {g.emoji}×{g.count}
-        </span>
-      ))}
+// ─── Game state ───────────────────────────────────────────────────────────────
+const S={
+  phase:'menu',   // menu | playing | result
+  envIdx:0,
+  q:null,         // current question
+  pool:[],        // remaining questions
+  total:0,        // answered
+  score:0,        // correct
+  feedback:null,  // {msg, guide, retry}
+  retryKey:0,
+  // env-specific state (reset on new question)
+  sel:null,       // Set or array or scalar
+  placed:false,
+  dragVal:0.5,
+  done:false,
+};
+
+let _autoTimer=null;
+
+function setState(patch){Object.assign(S,patch);render();}
+
+function startGame(idx){
+  clearTimeout(_autoTimer);
+  const fullPool=ENVS[idx].pool();
+  shuffle(fullPool);
+  const offset=Math.floor(Math.random()*Math.max(1,fullPool.length-10));
+  const q=fullPool.slice(offset,offset+10);
+  Object.assign(S,{
+    phase:'playing',envIdx:idx,
+    q:q[0],pool:q.slice(1),
+    total:0,score:0,feedback:null,retryKey:0,
+    sel:null,placed:false,dragVal:0.5,done:false
+  });
+  render();
+}
+
+function nextQ(pool){
+  if(!pool.length)return;
+  Object.assign(S,{q:pool[0],pool:pool.slice(1),feedback:null,sel:null,placed:false,dragVal:0.5,done:false,retryKey:S.retryKey+1});
+  render();
+}
+
+function handleAnswer(correct){
+  S.total++;
+  const g=GUIDES[S.envIdx];
+  if(correct){
+    S.score++;
+    const msg=randMsg(g.c,S.q);
+    S.feedback={msg,guide:g,retry:false};
+    S.done=true;
+    const delay=readTime(msg);
+    if(S.total>=10){_autoTimer=setTimeout(()=>{S.phase='result';render();},delay);}
+    else{const pool=S.pool;_autoTimer=setTimeout(()=>nextQ(pool),delay);}
+  } else {
+    const msg=randMsg(g.r,S.q);
+    S.feedback={msg,guide:g,retry:true};
+    S.done=true;
+  }
+  render();
+  // scroll to bubble
+  const b=document.getElementById('bubble');
+  if(b)b.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function retry(){
+  S.total--;
+  S.feedback=null;
+  S.done=false;
+  S.sel=null;
+  S.placed=false;
+  S.dragVal=0.5;
+  S.retryKey++;
+  render();
+}
+
+// ─── Env renderers ────────────────────────────────────────────────────────────
+function renderEnv(){
+  const t=ENVS[S.envIdx].type;
+  const q=S.q;
+  const c=PAL[S.envIdx];
+  if(!q)return'';
+  const {numerator:n,denominator:d}=q;
+
+  if(t==='pizza')   return renderPizza(q,c);
+  if(t==='line')    return renderLine(q,c);
+  if(t==='compare') return renderCompare(q,c);
+  if(t==='grid')    return renderGrid(q,c);
+  if(t==='strip')   return renderStrip(q,c);
+  if(t==='apart')   return renderApart(q,c);
+  if(t==='clock')   return renderClock(q,c);
+  if(t==='group')   return renderGroup(q,c);
+  if(t==='jar')     return renderJar(q,c);
+  if(t==='thermo')  return renderThermo(q,c);
+  if(t==='recipe')  return renderRecipe(q,c);
+  if(t==='stairs')  return renderStairs(q,c);
+  return '';
+}
+
+// ── PIZZA ──
+function renderPizza(q,c){
+  const{numerator:n,denominator:d}=q;
+  if(!S.sel)S.sel=new Set();
+  const sel=S.sel;
+  const paths=Array.from({length:d}).map((_,i)=>{
+    const fill=sel.has(i)?c.s:c.soft;
+    return `<path data-idx="${i}" d="${sectorPath(i,d,120,120,100)}" fill="${fill}" stroke="${c.p}" stroke-width="2" class="${S.done?'':'clickable'}"/>`;
+  }).join('');
+  return `
+    <p class="instr">Vybarvi <strong style="color:${c.p}">${n}/${d}</strong> dílu koláče.</p>
+    <svg width="240" height="240" viewBox="0 0 240 240" id="pizza-svg">
+      ${paths}
+      <circle cx="120" cy="120" r="100" fill="none" stroke="${c.p}" stroke-width="3"/>
+    </svg>
+    <p class="sel-count">Vybráno: <strong>${sel.size}</strong> z ${d}</p>
+    ${btnCheck(c,S.done||sel.size===0,'pizza-check')}`;
+}
+
+// ── LINE ──
+function renderLine(q,c){
+  const{numerator:n,denominator:d}=q;
+  const pos=S.dragVal;
+  const PAD=40,W=320,H=130,LY=68,TL=W-PAD*2;
+  const toX=p=>PAD+p*TL;
+  const hx=toX(pos),cx2=toX(n/d);
+  const ok=Math.abs(pos-n/d)<=0.5/d;
+  const trackFill=S.done?(ok?'#22C55E':'#EF4444'):c.s;
+  const hintLines=S.lineHint?Array.from({length:d-1}).map((_,i)=>
+    `<line x1="${toX((i+1)/d)}" y1="${LY-7}" x2="${toX((i+1)/d)}" y2="${LY+7}" stroke="${c.p}" stroke-width="1.5" stroke-dasharray="3,2"/>`
+  ).join(''):'';
+  return `
+    <p class="instr">Umísti <strong style="color:${c.p};font-size:22px">${n}/${d}</strong> na číselnou osu.</p>
+    <div style="font-size:12px;color:${c.m};background:${c.soft};border-radius:8px;padding:4px 12px;border:1px solid ${c.s}">💭 Žádné pomůcky – jen tvoje hlava a osa od 0 do 1</div>
+    <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" id="line-svg" style="width:100%;max-width:${W}px;overflow:visible;touch-action:none;cursor:${S.done?'default':'pointer'}">
+      <rect x="${PAD}" y="${LY-4}" width="${TL}" height="8" rx="4" fill="${c.soft}"/>
+      <rect x="${PAD}" y="${LY-4}" width="${Math.max(0,hx-PAD)}" height="8" rx="4" fill="${trackFill}"/>
+      <polygon points="${PAD-4},${LY} ${PAD-14},${LY-6} ${PAD-14},${LY+6}" fill="#0E1F2B"/>
+      <polygon points="${PAD+TL+4},${LY} ${PAD+TL+14},${LY-6} ${PAD+TL+14},${LY+6}" fill="#0E1F2B"/>
+      ${[0,1].map(v=>`<line x1="${toX(v)}" y1="${LY-12}" x2="${toX(v)}" y2="${LY+12}" stroke="#0E1F2B" stroke-width="2.5"/>
+        <text x="${toX(v)}" y="${LY+28}" text-anchor="middle" font-size="14" font-weight="bold" fill="#0E1F2B" font-family="inherit">${v}</text>`).join('')}
+      ${hintLines}
+      ${S.done?`<line x1="${cx2}" y1="${LY-24}" x2="${cx2}" y2="${LY+24}" stroke="#22C55E" stroke-width="2.5" stroke-dasharray="4,3"/>
+        <circle cx="${cx2}" cy="${LY-28}" r="14" fill="#22C55E"/>
+        <text x="${cx2}" y="${LY-23}" text-anchor="middle" font-size="11" fill="white" font-family="inherit" font-weight="bold">${n}/${d}</text>`:''}
+      ${!S.done?`<circle id="line-handle" cx="${hx}" cy="${LY}" r="18" fill="${S.placed?c.s:'#DDD'}" stroke="${S.placed?c.p:'#AAA'}" stroke-width="3" style="cursor:grab;filter:drop-shadow(0 2px 6px rgba(0,0,0,.2))"/>
+        <text x="${hx}" y="${LY+6}" text-anchor="middle" font-size="18" fill="${S.placed?'#0E1F2B':'#AAA'}" font-family="inherit" font-weight="bold" style="pointer-events:none">${S.placed?'•':'?'}</text>`:''}
+    </svg>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+      ${!S.done?`<button class="btn-outline" id="line-hint" style="border-color:${c.p};color:${c.p};border-radius:20px;padding:8px 16px;font-size:13px;min-height:44px">${S.lineHint?'🔍 Skrýt':'💡 Nápověda'}</button>`:''}
+      ${btnCheck(c,S.done||!S.placed,'line-check')}
+    </div>`;
+}
+
+// ── COMPARE ──
+function renderCompare(q,c){
+  const{fractionA:fa,fractionB:fb}=q;
+  const vA=fa[0]/fa[1],vB=fb[0]/fb[1];
+  const correct=vA>vB?'>':vA<vB?'<':'=';
+  const sel=S.sel;
+  const cup=(frac,label)=>`<div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+    <div style="font-size:22px;font-weight:800;color:#0E1F2B">${frac[0]}/${frac[1]}</div>
+    <div style="width:56px;height:130px;background:${c.soft};border-radius:8px;border:2px solid ${c.s};position:relative;overflow:hidden">
+      <div style="position:absolute;bottom:0;width:100%;height:${frac[0]/frac[1]*100}%;background:${c.p}"></div>
     </div>
-  );
-}
-
-// ─── In-game score dots ───────────────────────────────────────────────────────
-function ScoreDots({ score, c }) {
-  return (
-    <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"center"}}>
-      {Array.from({length:10}).map((_,i)=>(
-        <div key={i} style={{
-          width:22,height:22,borderRadius:"50%",
-          background:i<score?c.primary:c.soft,
-          border:`2px solid ${i<score?c.primary:c.secondary}`,
-          transition:"background 0.3s",
-          display:"flex",alignItems:"center",justifyContent:"center",
-          fontSize:11
-        }}>{i<score?"✓":""}</div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Main App ─────────────────────────────────────────────────────────────────
-export default function ZlomkyGame() {
-  const [envIdx,   setEnvIdx]   = useState(0);
-  const [question, setQuestion] = useState(null);
-  const [pool,     setPool]     = useState([]); // remaining questions this game
-  const [score,    setScore]    = useState(0);
-  const scoreRef = useRef(0);
-  const [streak,   setStreak]   = useState(0);
-  const [total,    setTotal]    = useState(0);
-  const [feedback, setFeedback] = useState(null);
-  const [phase,    setPhase]    = useState("menu");
-  const [collection, setCollection] = useState([]);
-  const [waitingNext, setWaitingNext] = useState(false); // true after wrong answer – waits for manual continue
-  const [showConfetti, setShowConfetti] = useState(false);
-  const [newReward,    setNewReward]    = useState(null);
-
-  const c = ENV_PALETTES[envIdx];
-
-  const startGame = idx => {
-    // Generate full pool, shuffle, take first 10 as the game queue
-    const fullPool = ENVS[idx].genPool();
-    const gameQueue = fullPool.slice(0, 10);
-    setEnvIdx(idx); setScore(0); scoreRef.current=0; setStreak(0); setTotal(0);
-    setFeedback(null); setNewReward(null); setShowConfetti(false); setWaitingNext(false);
-    setPool(gameQueue.slice(1));   // remaining after first
-    setQuestion(gameQueue[0]);
-    setPhase("playing");
-  };
-
-  const nextQ = useCallback((remainingPool) => {
-    if (remainingPool.length === 0) return;
-    setQuestion(remainingPool[0]);
-    setPool(remainingPool.slice(1));
-    setFeedback(null);
-  }, []);
-
-  const handleAnswer = correct => {
-    const nt = total + 1; setTotal(nt);
-    if(correct){
-      setScore(s=>s+1); scoreRef.current+=1; setStreak(s=>s+1);
-      setFeedback({ok:true, msg:getMsg(FEEDBACK.correct)});
-      if(nt >= 10){
-        setTimeout(()=>{
-          const fs = scoreRef.current;
-          const reward = rollAnimal(fs);
-          if(reward){ setCollection(col=>[...col,reward]); setNewReward(reward); }
-          if(fs >= 7) setShowConfetti(true);
-          setPhase("result");
-          setTimeout(()=>setShowConfetti(false), 4500);
-        }, 1400);
-      } else {
-        setPool(current => { setTimeout(()=>nextQ(current), 3000); return current; });
-      }
-    } else {
-      setStreak(0);
-      setFeedback({ok:false, msg:getMsg(FEEDBACK.wrong)});
-      if(nt >= 10){
-        // last question wrong – still need manual continue before result
-        setWaitingNext(true);
-      } else {
-        setWaitingNext(true); // pause – teacher can discuss
-      }
-    }
-  };
-
-  const handleContinue = () => {
-    setWaitingNext(false);
-    const nt = total; // total already incremented
-    if(nt >= 10){
-      const fs = scoreRef.current;
-      const reward = rollAnimal(fs);
-      if(reward){ setCollection(col=>[...col,reward]); setNewReward(reward); }
-      if(fs >= 7) setShowConfetti(true);
-      setPhase("result");
-      setTimeout(()=>setShowConfetti(false), 4500);
-    } else {
-      setPool(current => { nextQ(current); return current; });
-    }
-  };
-
-  const Env = ENVS[envIdx]?.comp;
-  const gc  = ENV_PALETTES[envIdx]; // game color (used in playing/result)
-
-  return (
-    <div style={{minHeight:"100vh",background:"#F0FDF8",fontFamily:"'Baloo 2','Segoe UI',sans-serif",
-      display:"flex",flexDirection:"column",alignItems:"center",padding:"20px 16px"}}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&display=swap');
-        * { box-sizing:border-box; }
-        button { transition:transform 0.1s; }
-        button:active:not(:disabled) { transform:scale(0.96); }
-        @keyframes fadeIn  { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
-        @keyframes popIn   { 0%{transform:scale(0) rotate(-12deg);opacity:0} 60%{transform:scale(1.3) rotate(4deg);opacity:1} 100%{transform:scale(1) rotate(0);opacity:1} }
-        @keyframes shimmer { 0%,100%{opacity:1} 50%{opacity:.6} }
-        @keyframes bounce  { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-      `}</style>
-
-      <Confetti active={showConfetti}/>
-
-      {/* ── Header ── */}
-      <div style={{textAlign:"center",marginBottom:20}}>
-        <div style={{fontSize:42,marginBottom:2,animation:"bounce 2s infinite"}}>🦁</div>
-        <h1 style={{fontSize:30,fontWeight:800,color:DARK,margin:0,letterSpacing:.5}}>Zlomková zoo</h1>
-        <p style={{color:"#6B7280",fontSize:13,margin:"3px 0 0"}}>Hraj, počítej a buduj si zoo 🐼🦊🐸🐣</p>
-        <ZooBar collection={collection}/>
+  </div>`;
+  return `
+    <p class="instr">Doplň správné znaménko mezi zlomky.</p>
+    <div style="display:flex;gap:18px;align-items:center">
+      ${cup(fa)} 
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${['>','=','<'].map(sym=>`<button class="sym-btn" data-sym="${sym}" style="width:48px;height:48px;border-radius:50%;border:2.5px solid ${sel===sym?c.p:c.soft};background:${sel===sym?c.s:'#fff'};font-size:22px;font-weight:bold;color:#0E1F2B;min-height:44px">${sym}</button>`).join('')}
       </div>
-
-      {/* ── MENU ── */}
-      {phase==="menu" && (
-        <div style={{maxWidth:460,width:"100%"}}>
-          <p style={{color:"#6B7280",fontSize:14,marginBottom:14,textAlign:"center"}}>Vyber si hru a sbírej zvířátka! Čím víc hraješ, tím víc jich máš. 🌴</p>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {ENVS.map((env,i)=>{
-              const ec=ENV_PALETTES[i];
-              return (
-                <button key={i} onClick={()=>startGame(i)} style={{
-                  background:ec.bg, border:`2.5px solid ${ec.soft}`,
-                  borderRadius:16,padding:"14px 12px",fontFamily:"inherit",
-                  fontWeight:700,color:DARK,cursor:"pointer",textAlign:"left",
-                  boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
-                  display:"flex",flexDirection:"column",gap:3,
-                  transition:"transform 0.15s,box-shadow 0.15s"
-                }}
-                  onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 6px 16px ${ec.soft}`;}}
-                  onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.06)";}}>
-                  <span style={{fontSize:26}}>{env.name.split(" ")[0]}</span>
-                  <span style={{fontSize:14,color:ec.primary}}>{env.name.split(" ").slice(1).join(" ")}</span>
-                  <span style={{fontSize:11,color:ec.muted,fontWeight:400}}>{env.desc}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Animal guide */}
-          <div style={{marginTop:16,padding:"12px 16px",background:"white",borderRadius:14,border:"1.5px solid #E2EBF0"}}>
-            <div style={{fontSize:12,color:"#6B7280",marginBottom:8,fontWeight:700}}>Jaká zvířátka můžeš získat:</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {ANIMALS.map(a=>(
-                <div key={a.emoji} style={{display:"flex",alignItems:"center",gap:3,
-                  padding:"4px 10px",background:a.rare?"#FDF4FF":"#F9FAFB",
-                  borderRadius:20,border:`1.5px solid ${a.color}22`}}>
-                  <span style={{fontSize:17}}>{a.emoji}</span>
-                  <span style={{fontSize:11,color:a.color,fontWeight:700}}>{a.name}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{fontSize:11,color:"#9CA3AF",marginTop:8}}>🦄 Jednorožec je vzácný – ale každá hra je šance ho potkat!</div>
-          </div>
-        </div>
-      )}
-
-      {/* ── PLAYING ── */}
-      {phase==="playing" && question && Env && (
-        <div style={{maxWidth:500,width:"100%"}}>
-          {/* Stats bar */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-            marginBottom:14,padding:"10px 16px",
-            background:gc.bg,borderRadius:14,border:`1.5px solid ${gc.soft}`,
-            boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
-            <div style={{fontSize:13,color:gc.muted}}><strong style={{color:gc.primary,fontSize:16}}>{score}</strong>/10</div>
-            <div style={{fontSize:13,color:gc.primary,fontWeight:800}}>{ENVS[envIdx].name}</div>
-            <div style={{fontSize:13,color:gc.muted}}>{total}/10 otázek</div>
-          </div>
-
-          <ScoreDots score={score} c={gc}/>
-
-          {/* Progress bar */}
-          <div style={{height:6,background:gc.soft,borderRadius:4,margin:"10px 0 16px",overflow:"hidden"}}>
-            <div style={{height:"100%",width:`${(total/10)*100}%`,background:gc.primary,borderRadius:4,transition:"width 0.4s"}}/>
-          </div>
-
-          {/* Question card */}
-          <div style={{background:"white",borderRadius:20,padding:"24px 20px",
-            boxShadow:`0 4px 20px ${gc.soft}`,border:`1.5px solid ${gc.soft}`}}>
-            <Env question={question} onAnswer={handleAnswer} c={gc}/>
-          </div>
-
-          {feedback && (
-            <div style={{marginTop:14,padding:"12px 18px",
-              background:feedback.ok?"#DCFCE7":"#FEF9C3",
-              border:`2px solid ${feedback.ok?CORRECT_COLOR:"#EAB308"}`,
-              borderRadius:14,color:DARK,fontSize:15,textAlign:"center",
-              animation:"fadeIn 0.3s ease"}}>
-              {feedback.msg}
-              {waitingNext && (
-                <div style={{marginTop:12}}>
-                  <button onClick={handleContinue} style={{
-                    background:gc.primary, color:"white", border:"none",
-                    borderRadius:30, padding:"10px 28px", fontSize:15,
-                    fontWeight:700, fontFamily:"inherit", cursor:"pointer",
-                    boxShadow:`0 3px 10px ${gc.soft}`}}>
-                    Pokračovat →
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          <button onClick={()=>setPhase("menu")} style={{marginTop:14,background:"transparent",border:"none",color:"#9CA3AF",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
-            ← Zpět do menu
-          </button>
-        </div>
-      )}
-
-      {/* ── RESULT ── */}
-      {phase==="result" && (
-        <div style={{maxWidth:420,width:"100%",textAlign:"center"}}>
-          <div style={{fontSize:60,marginBottom:8}}>{score>=8?"🏆":score>=5?"🌟":"💪"}</div>
-          <h2 style={{fontSize:28,fontWeight:800,color:DARK,marginBottom:6}}>
-            {score>=8?"Hodně práce, hodně výsledků.":score>=5?"Pokračuješ – a to je základ.":"Každý pokus něco přinese."}
-          </h2>
-          <p style={{color:"#6B7280",fontSize:17,margin:"0 0 12px"}}>
-            Správně: <strong style={{color:gc.primary,fontSize:26}}>{score}</strong> z 10
-          </p>
-
-          <ScoreDots score={score} c={gc}/>
-
-          {/* New reward */}
-          {newReward && (
-            <div style={{margin:"20px auto",display:"inline-flex",flexDirection:"column",alignItems:"center",gap:6,
-              padding:"18px 36px",background:"white",borderRadius:22,
-              border:`3px solid ${newReward.color}`,
-              boxShadow:`0 0 28px ${newReward.color}44`,
-              animation:"popIn 0.5s cubic-bezier(.34,1.56,.64,1) forwards"}}>
-              <div style={{fontSize:13,color:"#6B7280",fontWeight:700}}>Za dnešní hraní získáváš:</div>
-              <div style={{fontSize:56,lineHeight:1,animation:"shimmer 1.5s infinite"}}>
-                {Array.from({length:Math.min(newReward.count,4)}).map((_,i)=>(
-                  <span key={i}>{newReward.emoji}</span>
-                ))}
-              </div>
-              <div style={{fontSize:17,fontWeight:800,color:newReward.color}}>{newReward.name}!</div>
-            </div>
-          )}
-
-          <div style={{margin:"16px 0",padding:"12px 16px",background:"white",borderRadius:16,
-            border:"1.5px solid #E2EBF0",color:"#6B7280",fontSize:14}}>
-            {score>=8?"Tenhle úsek šel dobře. Co ti nejvíce pomáhalo?":
-             score>=5?"Část zlomků ti šla, část ještě ne. To je normální.":
-             "Méně správných neznamená méně práce. Zkus to znovu – mozek se učí opakováním."}
-          </div>
-
-          {/* Zoo summary */}
-          {collection.length>0 && (
-            <div style={{marginBottom:16}}>
-              <div style={{fontSize:12,color:"#6B7280",marginBottom:6}}>Tvoje zoo dnes:</div>
-              <ZooBar collection={collection}/>
-            </div>
-          )}
-
-          <div style={{display:"flex",gap:12,justifyContent:"center"}}>
-            <Btn c={gc} onClick={()=>startGame(envIdx)}>Hrát znovu 🔄</Btn>
-            <Btn c={gc} outline onClick={()=>setPhase("menu")}>Menu 🏠</Btn>
-          </div>
-        </div>
-      )}
+      ${cup(fb)}
     </div>
-  );
+    ${btnCheck(c,S.done||!sel,'compare-check')}`;
 }
+
+// ── GRID ──
+function renderGrid(q,c){
+  const{rows,cols,numerator:n,denominator:d}=q;
+  if(!S.sel)S.sel=new Set();
+  const sel=S.sel,total=rows*cols;
+  const cells=Array.from({length:total}).map((_,i)=>{
+    const on=sel.has(i);
+    return `<div data-idx="${i}" style="width:42px;height:42px;border-radius:7px;background:${on?c.s:c.soft};border:2px solid ${on?c.p:c.s};cursor:${S.done?'default':'pointer'};transition:all .15s"></div>`;
+  }).join('');
+  return `
+    <p class="instr">Vybarvi <strong style="color:${c.p}">${n}/${d}</strong> políček.</p>
+    <div id="grid-wrap" style="display:grid;grid-template-columns:repeat(${cols},42px);gap:4px">${cells}</div>
+    <p class="sel-count">Vybráno: <strong>${sel.size}</strong> z ${total}</p>
+    ${btnCheck(c,S.done||sel.size===0,'grid-check')}`;
+}
+
+// ── STRIP ──
+function renderStrip(q,c){
+  const{numerator:n,denominator:d}=q;
+  if(!S.sel)S.sel=new Set();
+  const sel=S.sel;
+  const W=300,H=70,sw=W/d;
+  const rects=Array.from({length:d}).map((_,i)=>{
+    const on=sel.has(i);
+    return `<g data-idx="${i}" class="strip-seg" style="cursor:${S.done?'default':'pointer'}">
+      <rect x="${i*sw}" y="8" width="${sw}" height="${H-16}" fill="${on?c.s:c.soft}"/>
+      <rect x="${i*sw}" y="8" width="${sw}" height="${H-16}" fill="none" stroke="${c.p}" stroke-width="1.5" style="pointer-events:none"/>
+      ${d<=10?`<text x="${i*sw+sw/2}" y="${H/2+5}" text-anchor="middle" font-size="11" fill="${on?'#0E1F2B':c.m}" font-family="inherit" style="pointer-events:none">${i+1}</text>`:''}
+    </g>`;
+  }).join('');
+  return `
+    <p class="instr">Vybarvi <strong style="color:${c.p}">${n}/${d}</strong> pásku.</p>
+    <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" id="strip-svg">
+      ${rects}
+      <rect x="0" y="8" width="${W}" height="${H-16}" rx="8" fill="none" stroke="${c.p}" stroke-width="2.5" style="pointer-events:none"/>
+    </svg>
+    <p class="sel-count">Vybráno: <strong>${sel.size}</strong> z ${d}</p>
+    ${btnCheck(c,S.done||sel.size===0,'strip-check')}`;
+}
+
+// ── APARTMENTS ──
+function renderApart(q,c){
+  const{numerator:n,denominator:d,floors,flatsPerFloor}=q;
+  if(!S.sel)S.sel=new Set();
+  const sel=S.sel,total=floors*flatsPerFloor;
+  const cw=56,ch=48,g=5,bW=flatsPerFloor*(cw+g)+g,bH=floors*(ch+g)+g+32;
+  const flats=[];
+  for(let row=0;row<floors;row++)for(let col=0;col<flatsPerFloor;col++){
+    const idx=row*flatsPerFloor+col;
+    const x=g+col*(cw+g),y=32+g+row*(ch+g),on=sel.has(idx);
+    flats.push(`<g data-idx="${idx}" class="flat-btn" style="cursor:${S.done?'default':'pointer'}">
+      <rect x="${x}" y="${y}" width="${cw}" height="${ch}" rx="4" fill="${on?c.s:'white'}" stroke="${on?c.p:c.soft}" stroke-width="${on?2:1.5}"/>
+      <rect x="${x+8}" y="${y+7}" width="13" height="16" rx="2" fill="${on?c.p:c.s}" style="pointer-events:none"/>
+      <rect x="${x+35}" y="${y+7}" width="13" height="16" rx="2" fill="${on?c.p:c.s}" style="pointer-events:none"/>
+      ${row===floors-1?`<rect x="${x+19}" y="${y+28}" width="18" height="16" rx="2" fill="${on?'#0E1F2B':c.m}" style="pointer-events:none"/>`:''}
+    </g>`);
+  }
+  return `
+    <p class="instr">Vybarvi <strong style="color:${c.p}">${n}/${d}</strong> bytů v domě.</p>
+    <svg width="${bW}" height="${bH}" viewBox="0 0 ${bW} ${bH}">
+      <polygon points="${bW/2},2 ${bW-6},30 6,30" fill="${c.p}"/>
+      <rect x="0" y="27" width="${bW}" height="${bH-27}" fill="${c.soft}" rx="5"/>
+      ${flats.join('')}
+    </svg>
+    <p class="sel-count">Vybráno: <strong>${sel.size}</strong> z ${total}</p>
+    ${btnCheck(c,S.done||sel.size===0,'apart-check')}`;
+}
+
+// ── CLOCK ──
+function renderClock(q,c){
+  const{numerator:n,denominator:d}=q;
+  if(!S.sel)S.sel=new Set();
+  const sel=S.sel;
+  const cx=130,cy=130,r=95;
+  const sectors=Array.from({length:d}).map((_,i)=>{
+    const on=sel.has(i);
+    return `<path data-idx="${i}" d="${sectorPath(i,d,cx,cy,r)}" fill="${on?c.s:c.soft}" stroke="white" stroke-width="2" class="${S.done?'':'clickable'}"/>`;
+  }).join('');
+  const ticks=Array.from({length:12}).map((_,i)=>{
+    const a=(i*30-90)*Math.PI/180;
+    return `<line x1="${cx+100*Math.cos(a)}" y1="${cy+100*Math.sin(a)}" x2="${cx+(i%3===0?110:104)*Math.cos(a)}" y2="${cy+(i%3===0?110:104)*Math.sin(a)}" stroke="${c.m}" stroke-width="${i%3===0?2.5:1.5}"/>
+      ${i%3===0?`<text x="${cx+118*Math.cos(a)}" y="${cy+118*Math.sin(a)+4}" text-anchor="middle" font-size="11" fill="${c.m}" font-family="inherit">${i===0?12:i}</text>`:''}`;
+  }).join('');
+  return `
+    <p class="instr">Vybarvi <strong style="color:${c.p}">${n}/${d}</strong> ciferníku.</p>
+    <svg width="260" height="260" viewBox="0 0 260 260" id="clock-svg">
+      <circle cx="${cx}" cy="${cy}" r="118" fill="white" stroke="#DDD" stroke-width="1.5"/>
+      ${sectors}
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${c.p}" stroke-width="3"/>
+      ${ticks}
+      <circle cx="${cx}" cy="${cy}" r="8" fill="${c.p}"/>
+    </svg>
+    <p class="sel-count">Vybráno: <strong>${sel.size}</strong> z ${d}</p>
+    ${btnCheck(c,S.done||sel.size===0,'clock-check')}`;
+}
+
+// ── GROUP ──
+function renderGroup(q,c){
+  const{numerator:n,denominator:d,icon}=q;
+  if(!S.sel)S.sel=new Set();
+  const sel=S.sel;
+  const cols=Math.min(d,5);
+  const btns=Array.from({length:d}).map((_,i)=>{
+    const on=sel.has(i);
+    return `<button data-idx="${i}" class="group-item" style="width:52px;height:52px;border-radius:12px;font-size:26px;background:${on?c.s:c.soft};border:2.5px solid ${on?c.p:c.s};transform:${on?'scale(1.1)':'scale(1)'};min-height:44px">${icon}</button>`;
+  }).join('');
+  return `
+    <p class="instr">Vyber <strong style="color:${c.p}">${n}/${d}</strong> z těchto předmětů.</p>
+    <div id="group-wrap" style="display:grid;grid-template-columns:repeat(${cols},52px);gap:8px">${btns}</div>
+    <p class="sel-count">Vybráno: <strong>${sel.size}</strong> z ${d}</p>
+    ${btnCheck(c,S.done||sel.size===0,'group-check')}`;
+}
+
+// ── JAR ──
+function renderJar(q,c){
+  const{numerator:n,denominator:d}=q;
+  const fill=S.dragVal;
+  const W=160,H=220,BOTT=30,TOP=20,innerH=H-BOTT-TOP;
+  const waterY=H-BOTT-fill*innerH;
+  const jarPath=`M30,${TOP} L20,${H-BOTT} Q${W/2},${H-5} ${W-20},${H-BOTT} L${W-30},${TOP} Z`;
+  const fillColor=S.done?(Math.abs(fill-n/d)<=0.5/d?'#22C55E':'#EF4444'):c.s;
+  return `
+    <p class="instr">Naplň sklenici na <strong style="color:${c.p}">${n}/${d}</strong>.</p>
+    <div style="display:flex;gap:16px;align-items:center">
+      <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" id="jar-svg" style="overflow:visible;touch-action:none;cursor:${S.done?'default':'ns-resize'}">
+        <path d="${jarPath}" fill="none" stroke="${c.p}" stroke-width="3" stroke-linejoin="round"/>
+        <clipPath id="jClip"><path d="${jarPath}"/></clipPath>
+        <rect x="0" y="${waterY}" width="${W}" height="${H}" clip-path="url(#jClip)" fill="${fillColor}" opacity="0.75"/>
+        ${S.done?`<line x1="15" y1="${H-BOTT-n/d*innerH}" x2="${W-15}" y2="${H-BOTT-n/d*innerH}" stroke="#22C55E" stroke-width="2.5" stroke-dasharray="5,3"/>`:''}
+        ${!S.done?`<line x1="25" y1="${waterY}" x2="${W-25}" y2="${waterY}" stroke="${c.p}" stroke-width="3"/>
+          <circle id="jar-handle" cx="${W/2}" cy="${waterY}" r="10" fill="${S.placed?c.p:'#CCC'}" stroke="white" stroke-width="2" style="cursor:ns-resize"/>`:''}
+        ${S.placed&&!S.done?`<rect x="${W/2-22}" y="${waterY-36}" width="44" height="22" rx="6" fill="${c.p}"/>
+          <polygon points="${W/2-5},${waterY-14} ${W/2+5},${waterY-14} ${W/2},${waterY-8}" fill="${c.p}"/>
+          <text x="${W/2}" y="${waterY-21}" text-anchor="middle" font-size="11" fill="white" font-family="inherit" font-weight="bold">${Math.round(fill*d)}/${d}</text>`:''}
+      </svg>
+      <div style="font-size:12px;color:${c.m};display:flex;flex-direction:column;justify-content:space-between;height:${innerH}px;padding-top:${TOP}px">
+        <span>1</span><span>0</span>
+      </div>
+    </div>
+    <div style="font-size:12px;color:${c.m}">Táhni nebo klikni na sklenici</div>
+    ${btnCheck(c,S.done||!S.placed,'jar-check')}`;
+}
+
+// ── THERMO ──
+function renderThermo(q,c){
+  const{numerator:n,denominator:d}=q;
+  const fill=S.dragVal;
+  const W=80,H=260,BULB=24,TPAD=20,trackH=H-BULB*2-TPAD;
+  const CX=W/2,TW=18;
+  const merY=H-BULB-fill*trackH;
+  const correctY=H-BULB-n/d*trackH;
+  const merColor=S.done?(Math.abs(fill-n/d)<=0.5/d?'#22C55E':'#EF4444'):c.s;
+  const ticks=Array.from({length:d+1}).map((_,i)=>{
+    const y=H-BULB-i/d*trackH,isEnd=i===0||i===d;
+    return `<line x1="${CX+TW/2}" y1="${y}" x2="${CX+TW/2+(isEnd?10:6)}" y2="${y}" stroke="${isEnd?c.p:c.m}" stroke-width="${isEnd?2:1.5}"/>
+      ${isEnd?`<text x="${CX+TW/2+14}" y="${y+4}" font-size="12" font-weight="bold" fill="${c.p}" font-family="inherit">${i===0?'0':'1'}</text>`:''}`;
+  }).join('');
+  return `
+    <p class="instr">Nastav teploměr na <strong style="color:${c.p}">${n}/${d}</strong>.</p>
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" id="thermo-svg" style="overflow:visible;touch-action:none;cursor:${S.done?'default':'ns-resize'}">
+        <rect x="${CX-TW/2}" y="${TPAD}" width="${TW}" height="${trackH+BULB}" rx="${TW/2}" fill="${c.soft}"/>
+        <clipPath id="tClip"><rect x="${CX-TW/2}" y="${TPAD}" width="${TW}" height="${trackH+BULB}" rx="${TW/2}"/></clipPath>
+        <rect x="${CX-TW/2}" y="${merY}" width="${TW}" height="${H}" clip-path="url(#tClip)" fill="${merColor}"/>
+        <circle cx="${CX}" cy="${H-BULB}" r="${BULB}" fill="${merColor}"/>
+        <circle cx="${CX}" cy="${H-BULB}" r="${BULB}" fill="none" stroke="${c.p}" stroke-width="2.5"/>
+        <rect x="${CX-TW/2}" y="${TPAD}" width="${TW}" height="${trackH}" rx="${TW/2}" fill="none" stroke="${c.p}" stroke-width="2.5"/>
+        ${ticks}
+        ${S.done?`<line x1="${CX-TW/2-4}" y1="${correctY}" x2="${CX+TW/2+4}" y2="${correctY}" stroke="#22C55E" stroke-width="2.5" stroke-dasharray="4,2"/>`:''}
+        ${!S.done?`<circle id="thermo-handle" cx="${CX}" cy="${merY}" r="10" fill="${S.placed?c.p:'#CCC'}" stroke="white" stroke-width="2.5" style="cursor:ns-resize"/>`:''}
+      </svg>
+      <div style="padding-top:${TPAD}px;font-size:13px;color:${c.m};width:60px">
+        ${S.placed&&!S.done?`<div style="background:${c.p};color:white;border-radius:8px;padding:3px 7px;font-size:12px;font-weight:700;text-align:center">${Math.round(fill*d)}/${d}</div>`:''}
+      </div>
+    </div>
+    <div style="font-size:12px;color:${c.m}">Táhni rtuť nebo klikni na teploměr</div>
+    ${btnCheck(c,S.done||!S.placed,'thermo-check')}`;
+}
+
+// ── RECIPE ──
+function renderRecipe(q,c){
+  const{numerator:n,denominator:d,ingredient:ing}=q;
+  const sel=S.sel??0;
+  const pct=sel/d;
+  const W=220,H=160;
+  const bL=18,bR=W-18,bTop=18,bBot=H-18,bW2=bR-bL,bH=bBot-bTop;
+  const bowlPath=`M${bL},${bTop} L${bR},${bTop} Q${bR+8},${bTop+bH*.4} ${(bL+bR)/2},${bBot} Q${bL-8},${bTop+bH*.4} ${bL},${bTop} Z`;
+  const fillY=bTop+bH*(1-pct);
+  return `
+    <p class="instr">Odměř <strong style="color:${c.p}">${n}/${d}</strong> ${ing.unitGen} ${ing.label} ${ing.emoji} do mísy.</p>
+    <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+      <defs><clipPath id="bowl"><path d="${bowlPath}"/></clipPath></defs>
+      <path d="${bowlPath}" fill="${c.soft}"/>
+      <rect x="0" y="${fillY}" width="${W}" height="${H-fillY}" fill="${c.s}" clip-path="url(#bowl)"/>
+      <path d="${bowlPath}" fill="none" stroke="${c.p}" stroke-width="3" stroke-linejoin="round"/>
+      <text x="${W/2}" y="${bTop+bH*.52+8}" text-anchor="middle" font-size="26" font-family="inherit">${ing.emoji}</text>
+      <text x="${W/2}" y="${bTop+bH*.82}" text-anchor="middle" font-size="14" font-weight="bold" fill="${pct>.6?'white':c.p}" font-family="inherit">${sel}/${d}</text>
+    </svg>
+    <div style="display:flex;gap:16px;align-items:center">
+      <button id="recipe-minus" style="width:44px;height:44px;border-radius:50%;font-size:22px;font-weight:bold;background:${sel>0?c.s:c.soft};color:#0E1F2B;border:2px solid ${c.p};min-height:44px" ${S.done||sel<=0?'disabled':''}>−</button>
+      <div style="font-size:20px">${Array.from({length:d}).map((_,i)=>`<span style="opacity:${i<sel?1:.2}">${ing.emoji}</span>`).join('')}</div>
+      <button id="recipe-plus"  style="width:44px;height:44px;border-radius:50%;font-size:22px;font-weight:bold;background:${sel<d?c.s:c.soft};color:#0E1F2B;border:2px solid ${c.p};min-height:44px" ${S.done||sel>=d?'disabled':''}>+</button>
+    </div>
+    ${btnCheck(c,S.done||sel===0,'recipe-check')}`;
+}
+
+// ── STAIRS ──
+function renderStairs(q,c){
+  const{numerator:n,denominator:d}=q;
+  if(!S.sel)S.sel=new Set();
+  const sel=S.sel;
+  const SVG_W=280,SVG_H=200;
+  const stepH=Math.min(36,Math.floor((SVG_H-20)/d));
+  const stepW=Math.min(40,Math.floor((SVG_W-20)/d));
+  const bX=10,bY=SVG_H-10;
+  const steps=Array.from({length:d}).map((_,i)=>{
+    const x=bX+i*stepW,y=bY-(i+1)*stepH,w=(d-i)*stepW,h=stepH;
+    const on=sel.has(i);
+    return `<g data-idx="${i}" class="stair-step" style="cursor:${S.done?'default':'pointer'}">
+      <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${on?c.s:c.soft}" stroke="${c.p}" stroke-width="1.5"/>
+      <text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" font-size="${Math.min(12,h*.55)}" fill="${on?'#0E1F2B':c.m}" font-family="inherit" font-weight="bold" style="pointer-events:none">${i+1}</text>
+    </g>`;
+  }).join('');
+  // Frog on top step
+  let frog='';
+  if(sel.size>0){
+    const top=Math.max(...sel);
+    const x=bX+top*stepW,y=bY-(top+1)*stepH,w=(d-top)*stepW;
+    const px=x+w-18,py=y-2;
+    frog=`<g style="pointer-events:none">
+      <ellipse cx="${px}" cy="${py-10}" rx="10" ry="9" fill="#2ECC71"/>
+      <circle cx="${px-4}" cy="${py-17}" r="5" fill="#2ECC71"/>
+      <circle cx="${px+4}" cy="${py-17}" r="5" fill="#2ECC71"/>
+      <circle cx="${px-4}" cy="${py-17}" r="3" fill="white"/>
+      <circle cx="${px+4}" cy="${py-17}" r="3" fill="white"/>
+      <circle cx="${px-3}" cy="${py-17}" r="1.5" fill="#0E1F2B"/>
+      <circle cx="${px+5}" cy="${py-17}" r="1.5" fill="#0E1F2B"/>
+    </g>`;
+  }
+  return `
+    <p class="instr">Označ <strong style="color:${c.p}">${n}/${d}</strong> schodů schodiště.</p>
+    <svg width="${SVG_W}" height="${SVG_H}" viewBox="0 0 ${SVG_W} ${SVG_H}" id="stairs-svg">
+      <line x1="${bX}" y1="${bY}" x2="${bX+d*stepW+10}" y2="${bY}" stroke="${c.m}" stroke-width="2"/>
+      ${steps}${frog}
+    </svg>
+    <p class="sel-count">Označeno: <strong>${sel.size}</strong> z ${d} schodů</p>
+    ${btnCheck(c,S.done||sel.size===0,'stairs-check')}`;
+}
+
+function btnCheck(c,disabled,id){
+  return `<button id="${id}" class="btn-primary" style="background:${disabled?'#CBD5E1':c.p}" ${disabled?'disabled':''}>Zkontrolovat ✓</button>`;
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render(){
+  const app=document.getElementById('app');
+  const c=PAL[S.envIdx];
+  const g=GUIDES[S.envIdx];
+
+  // Header
+  let html=`<div class="header">
+    <div style="font-size:42px;animation:bounce 2s infinite;display:inline-block">🦁</div>
+    <h1>Zlomková zoo</h1>
+    <p>Zkoumej zlomky. Průvodce je s tebou. 🌿</p>
+  </div>`;
+
+  if(S.phase==='menu'){
+    html+=`<div class="env-grid">`;
+    ENVS.forEach((e,i)=>{
+      const ec=PAL[i];
+      html+=`<button class="env-btn" data-env="${i}" style="background:${ec.bg};border-color:${ec.soft}">
+        <span class="icon">${e.name.split(' ')[0]}</span>
+        <span class="name" style="color:${ec.p}">${e.name.split(' ').slice(1).join(' ')}</span>
+        <span class="desc">${e.desc}</span>
+      </button>`;
+    });
+    html+=`</div>
+    <div style="width:100%;padding:12px 16px;background:white;border-radius:14px;border:1.5px solid #E2EBF0">
+      <div style="font-size:12px;color:#6B7280;margin-bottom:8px;font-weight:700">Průvodci prostředí:</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${GUIDES.map((g,i)=>`<div style="display:flex;align-items:center;gap:4px;padding:5px 10px;background:${PAL[i].bg};border-radius:20px;border:1.5px solid ${PAL[i].soft}">
+          <span style="font-size:16px">${g.e}</span>
+          <span style="font-size:11px;color:${PAL[i].p};font-weight:700">${ENVS[i].name.split(' ').slice(1).join(' ')}</span>
+        </div>`).join('')}
+      </div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:8px">Průvodce komentuje postup, ne výsledek. Mluví vždy – při správné i špatné odpovědi.</div>
+    </div>`;
+  }
+
+  if(S.phase==='playing'&&S.q){
+    // Stats
+    html+=`<div class="stats-bar" style="background:${c.bg};border-color:${c.soft}">
+      <div>🌿</div>
+      <div class="stats-name" style="color:${c.p}">${ENVS[S.envIdx].name.split(' ').slice(1).join(' ')}</div>
+      <div>${S.total}/10 otázek</div>
+    </div>`;
+    // Progress dots
+    html+=`<div class="dots">${Array.from({length:10}).map((_,i)=>`<div class="dot ${i<S.total?'done':''}" style="background:${i<S.total?c.s:c.soft};border-color:${i<S.total?c.p:c.s}"></div>`).join('')}</div>`;
+    // Progress bar
+    html+=`<div class="progress-track" style="background:${c.soft}"><div class="progress-fill" style="width:${S.total*10}%;background:${c.p}"></div></div>`;
+    // Guide bubble
+    const hasFb=!!S.feedback;
+    html+=`<div class="bubble-wrap" id="bubble">
+      <div class="bubble-avatar" style="border-color:${c.s};background:${c.soft}">${g.e}</div>
+      <div class="bubble-msg ${hasFb?'active':''}" style="border-color:${hasFb?c.s:c.soft};background:${hasFb?'#fff':c.bg};color:${hasFb?'#0E1F2B':'#9CA3AF'}">
+        ${hasFb
+          ?`<div class="bubble-label">${g.n}:</div><div>„${S.feedback.msg}"</div>${S.feedback.retry?`<div><button class="btn-retry" id="retry-btn" style="color:${c.p};border:2px solid ${c.p}">Zkusit znovu ↩</button></div>`:''}`
+          :`<span style="font-size:13px">${g.n} je tady s tebou.</span>`}
+      </div>
+    </div>`;
+    // Question card
+    html+=`<div class="q-card" style="box-shadow:0 4px 20px ${c.soft};border-color:${c.soft}" id="qcard-${S.retryKey}">
+      ${renderEnv()}
+    </div>`;
+    // Back button
+    html+=`<button class="btn-ghost" id="back-btn">← Zpět do menu</button>`;
+  }
+
+  if(S.phase==='result'){
+    html+=`<div class="result-card">
+      <div style="font-size:60px">${g.e}</div>
+      <h2 style="font-size:26px;font-weight:800;color:#0E1F2B">Prozkoumávání dokončeno.</h2>
+      <p style="color:#6B7280;font-size:15px">Prošel/a jsi všech 10 otázek.</p>
+      <div class="dots">${Array.from({length:10}).map((_,i)=>`<div class="dot done" style="background:${c.s};border-color:${c.p}"></div>`).join('')}</div>
+      <div class="result-guide-bubble">
+        <div class="bubble-avatar" style="border-color:${c.s};background:${c.soft}">${g.e}</div>
+        <div class="bubble-msg active" style="border-color:${c.s}">
+          <div class="bubble-label">${g.n}:</div>
+          <div>„Co z dnešního zkoumání si odnášíš? Co bylo překvapivé?"</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:center">
+        <button id="play-again" class="btn-primary" style="background:${c.p}">Zkoumat znovu 🔄</button>
+        <button id="to-menu" class="btn-outline" style="border:2px solid ${c.p};color:${c.p}">Menu 🏠</button>
+      </div>
+    </div>`;
+  }
+
+  app.innerHTML=html;
+  attachListeners();
+}
+
+// ─── Event listeners ──────────────────────────────────────────────────────────
+function attachListeners(){
+  const c=PAL[S.envIdx];
+  const t=S.envIdx<ENVS.length?ENVS[S.envIdx].type:'';
+
+  // Menu
+  document.querySelectorAll('.env-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>startGame(+btn.dataset.env));
+    btn.addEventListener('mouseenter',()=>{btn.style.boxShadow=`0 6px 16px ${PAL[+btn.dataset.env].soft}`;});
+    btn.addEventListener('mouseleave',()=>{btn.style.boxShadow='';});
+  });
+
+  // Back / retry / result
+  document.getElementById('back-btn')?.addEventListener('click',()=>{clearTimeout(_autoTimer);setState({phase:'menu'});});
+  document.getElementById('retry-btn')?.addEventListener('click',()=>retry());
+  document.getElementById('play-again')?.addEventListener('click',()=>startGame(S.envIdx));
+  document.getElementById('to-menu')?.addEventListener('click',()=>setState({phase:'menu'}));
+
+  if(S.phase!=='playing')return;
+
+  // Pizza
+  if(t==='pizza'){
+    document.querySelectorAll('#pizza-svg path[data-idx]').forEach(el=>{
+      el.addEventListener('click',()=>{
+        if(S.done)return;
+        const i=+el.dataset.idx;
+        if(!S.sel)S.sel=new Set();
+        S.sel.has(i)?S.sel.delete(i):S.sel.add(i);
+        render();
+      });
+    });
+    document.getElementById('pizza-check')?.addEventListener('click',()=>{
+      if(S.done||!S.sel)return;
+      handleAnswer(S.sel.size===S.q.numerator);
+    });
+  }
+
+  // Line
+  if(t==='line'){
+    const svg=document.getElementById('line-svg');
+    let dragging=false;
+    const PAD=40,W=320,TL=W-PAD*2;
+    const getPos=e=>{
+      const r=svg.getBoundingClientRect();
+      const cx=e.touches?e.touches[0].clientX:e.clientX;
+      return Math.max(0,Math.min(1,(cx-r.left)*(W/r.width)-PAD)/TL);
+    };
+    svg?.addEventListener('mousedown',e=>{if(S.done)return;dragging=true;S.dragVal=getPos(e);S.placed=true;render();});
+    svg?.addEventListener('touchstart',e=>{if(S.done)return;dragging=true;S.dragVal=getPos(e);S.placed=true;render();},{passive:true});
+    svg?.addEventListener('click',e=>{if(S.done||dragging)return;S.dragVal=getPos(e);S.placed=true;render();});
+    window.addEventListener('mousemove',e=>{if(!dragging||S.done)return;S.dragVal=getPos(e);S.placed=true;render();},{once:false});
+    window.addEventListener('mouseup',()=>{dragging=false;});
+    window.addEventListener('touchmove',e=>{if(!dragging||S.done)return;S.dragVal=getPos(e);S.placed=true;render();},{passive:true});
+    window.addEventListener('touchend',()=>{dragging=false;});
+    document.getElementById('line-hint')?.addEventListener('click',()=>{S.lineHint=!S.lineHint;render();});
+    document.getElementById('line-check')?.addEventListener('click',()=>{
+      if(S.done||!S.placed)return;
+      const ok=Math.abs(S.dragVal-S.q.numerator/S.q.denominator)<=0.5/S.q.denominator;
+      handleAnswer(ok);
+    });
+  }
+
+  // Compare
+  if(t==='compare'){
+    document.querySelectorAll('.sym-btn').forEach(btn=>{
+      btn.addEventListener('click',()=>{if(S.done)return;S.sel=btn.dataset.sym;render();});
+    });
+    document.getElementById('compare-check')?.addEventListener('click',()=>{
+      if(S.done||!S.sel)return;
+      const{fractionA:fa,fractionB:fb}=S.q;
+      const vA=fa[0]/fa[1],vB=fb[0]/fb[1];
+      const correct=vA>vB?'>':vA<vB?'<':'=';
+      handleAnswer(S.sel===correct);
+    });
+  }
+
+  // Grid
+  if(t==='grid'){
+    document.querySelectorAll('#grid-wrap div[data-idx]').forEach(el=>{
+      el.addEventListener('click',()=>{
+        if(S.done)return;
+        const i=+el.dataset.idx;
+        if(!S.sel)S.sel=new Set();
+        S.sel.has(i)?S.sel.delete(i):S.sel.add(i);
+        render();
+      });
+    });
+    document.getElementById('grid-check')?.addEventListener('click',()=>{
+      if(S.done||!S.sel)return;
+      handleAnswer(S.sel.size===S.q.numerator);
+    });
+  }
+
+  // Strip
+  if(t==='strip'){
+    document.querySelectorAll('.strip-seg[data-idx]').forEach(el=>{
+      el.addEventListener('click',()=>{
+        if(S.done)return;
+        const i=+el.dataset.idx;
+        if(!S.sel)S.sel=new Set();
+        S.sel.has(i)?S.sel.delete(i):S.sel.add(i);
+        render();
+      });
+    });
+    document.getElementById('strip-check')?.addEventListener('click',()=>{
+      if(S.done||!S.sel)return;
+      handleAnswer(S.sel.size===S.q.numerator);
+    });
+  }
+
+  // Apartments
+  if(t==='apart'){
+    document.querySelectorAll('.flat-btn[data-idx]').forEach(el=>{
+      el.addEventListener('click',()=>{
+        if(S.done)return;
+        const i=+el.dataset.idx;
+        if(!S.sel)S.sel=new Set();
+        S.sel.has(i)?S.sel.delete(i):S.sel.add(i);
+        render();
+      });
+    });
+    document.getElementById('apart-check')?.addEventListener('click',()=>{
+      if(S.done||!S.sel)return;
+      handleAnswer(S.sel.size===S.q.numerator);
+    });
+  }
+
+  // Clock
+  if(t==='clock'){
+    document.querySelectorAll('#clock-svg path[data-idx]').forEach(el=>{
+      el.addEventListener('click',()=>{
+        if(S.done)return;
+        const i=+el.dataset.idx;
+        if(!S.sel)S.sel=new Set();
+        S.sel.has(i)?S.sel.delete(i):S.sel.add(i);
+        render();
+      });
+    });
+    document.getElementById('clock-check')?.addEventListener('click',()=>{
+      if(S.done||!S.sel)return;
+      handleAnswer(S.sel.size===S.q.numerator);
+    });
+  }
+
+  // Group
+  if(t==='group'){
+    document.querySelectorAll('.group-item[data-idx]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        if(S.done)return;
+        const i=+btn.dataset.idx;
+        if(!S.sel)S.sel=new Set();
+        S.sel.has(i)?S.sel.delete(i):S.sel.add(i);
+        render();
+      });
+    });
+    document.getElementById('group-check')?.addEventListener('click',()=>{
+      if(S.done||!S.sel)return;
+      handleAnswer(S.sel.size===S.q.numerator);
+    });
+  }
+
+  // Jar
+  if(t==='jar'){
+    const svg=document.getElementById('jar-svg');
+    let dragging=false;
+    const W=160,H=220,BOTT=30,TOP=20,innerH=H-BOTT-TOP;
+    const getVal=e=>{
+      const r=svg.getBoundingClientRect();
+      const cy=e.touches?e.touches[0].clientY:e.clientY;
+      const y=(cy-r.top)*(H/r.height);
+      return Math.max(0,Math.min(1,(H-BOTT-y)/innerH));
+    };
+    svg?.addEventListener('mousedown',e=>{if(S.done)return;dragging=true;S.dragVal=getVal(e);S.placed=true;render();});
+    svg?.addEventListener('touchstart',e=>{if(S.done)return;dragging=true;S.dragVal=getVal(e);S.placed=true;render();},{passive:true});
+    svg?.addEventListener('click',e=>{if(S.done)return;S.dragVal=getVal(e);S.placed=true;render();});
+    window.addEventListener('mousemove',e=>{if(!dragging||S.done)return;S.dragVal=getVal(e);S.placed=true;render();});
+    window.addEventListener('mouseup',()=>{dragging=false;});
+    window.addEventListener('touchmove',e=>{if(!dragging||S.done)return;S.dragVal=getVal(e);S.placed=true;render();},{passive:true});
+    window.addEventListener('touchend',()=>{dragging=false;});
+    document.getElementById('jar-check')?.addEventListener('click',()=>{
+      if(S.done||!S.placed)return;
+      handleAnswer(Math.abs(S.dragVal-S.q.numerator/S.q.denominator)<=0.5/S.q.denominator);
+    });
+  }
+
+  // Thermo
+  if(t==='thermo'){
+    const svg=document.getElementById('thermo-svg');
+    let dragging=false;
+    const H=260,BULB=24,TPAD=20,trackH=H-BULB*2-TPAD;
+    const getVal=e=>{
+      const r=svg.getBoundingClientRect();
+      const cy=e.touches?e.touches[0].clientY:e.clientY;
+      const y=(cy-r.top)*(H/r.height);
+      return Math.max(0,Math.min(1,(H-BULB-y)/trackH));
+    };
+    svg?.addEventListener('mousedown',e=>{if(S.done)return;dragging=true;S.dragVal=getVal(e);S.placed=true;render();});
+    svg?.addEventListener('touchstart',e=>{if(S.done)return;dragging=true;S.dragVal=getVal(e);S.placed=true;render();},{passive:true});
+    svg?.addEventListener('click',e=>{if(S.done)return;S.dragVal=getVal(e);S.placed=true;render();});
+    window.addEventListener('mousemove',e=>{if(!dragging||S.done)return;S.dragVal=getVal(e);S.placed=true;render();});
+    window.addEventListener('mouseup',()=>{dragging=false;});
+    window.addEventListener('touchmove',e=>{if(!dragging||S.done)return;S.dragVal=getVal(e);S.placed=true;render();},{passive:true});
+    window.addEventListener('touchend',()=>{dragging=false;});
+    document.getElementById('thermo-check')?.addEventListener('click',()=>{
+      if(S.done||!S.placed)return;
+      handleAnswer(Math.abs(S.dragVal-S.q.numerator/S.q.denominator)<=0.5/S.q.denominator);
+    });
+  }
+
+  // Recipe
+  if(t==='recipe'){
+    if(!S.sel&&S.sel!==0)S.sel=0;
+    document.getElementById('recipe-minus')?.addEventListener('click',()=>{if(S.done||S.sel<=0)return;S.sel--;render();});
+    document.getElementById('recipe-plus')?.addEventListener('click',()=>{if(S.done||S.sel>=S.q.denominator)return;S.sel++;render();});
+    document.getElementById('recipe-check')?.addEventListener('click',()=>{
+      if(S.done||S.sel===0)return;
+      handleAnswer(S.sel===S.q.numerator);
+    });
+  }
+
+  // Stairs
+  if(t==='stairs'){
+    document.querySelectorAll('.stair-step[data-idx]').forEach(el=>{
+      el.addEventListener('click',()=>{
+        if(S.done)return;
+        const i=+el.dataset.idx;
+        if(!S.sel)S.sel=new Set();
+        S.sel.has(i)?S.sel.delete(i):S.sel.add(i);
+        render();
+      });
+    });
+    document.getElementById('stairs-check')?.addEventListener('click',()=>{
+      if(S.done||!S.sel)return;
+      handleAnswer(S.sel.size===S.q.numerator);
+    });
+  }
+}
+
+render();
+</script>
+</body>
+</html>
